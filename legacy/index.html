@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>旅のしおり｜国内旅行プランナー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root{
+    --paper:#f7f4ed; --paper-2:#fffdf8; --ink:#21303f; --ink-soft:#5d6b77;
+    --line:#e4ddcf; --line-2:#efe9dc; --accent:#e0654a; --accent-ink:#b94a32;
+    --c-sight:#3a7ca5; --c-food:#e0654a; --c-lodge:#7b6aa8; --c-move:#4f9d69; --c-other:#8a8a8a;
+    --ok:#4f9d69; --warn:#c98a2b; --shadow:0 1px 2px rgba(33,48,63,.06),0 6px 20px rgba(33,48,63,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:"Noto Sans JP",system-ui,sans-serif;color:var(--ink);background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  #root{height:100%}
+  .app{display:grid;grid-template-columns:380px 1fr;height:100vh;overflow:hidden}
+  /* ---------- sidebar ---------- */
+  .side{display:flex;flex-direction:column;background:var(--paper);border-right:1px solid var(--line);min-width:0}
+  .brand{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--paper-2)}
+  .brand .mark{width:30px;height:30px;border-radius:8px;background:var(--ink);color:#fff;display:grid;place-items:center;font-family:"Zen Kaku Gothic New";font-weight:900;font-size:16px}
+  .brand h1{font-family:"Zen Kaku Gothic New";font-weight:900;font-size:17px;margin:0;letter-spacing:.02em}
+  .brand .sub{font-size:11px;color:var(--ink-soft);margin-top:1px}
+  .tripbar{display:flex;gap:6px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .tripbar select{flex:1;min-width:0;font-family:inherit;font-size:13px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper-2);color:var(--ink)}
+  .scroll{flex:1;overflow-y:auto;overflow-x:hidden}
+  .sec{padding:14px 14px 6px}
+  .sec h2{font-family:"Zen Kaku Gothic New";font-weight:700;font-size:12px;letter-spacing:.08em;color:var(--ink-soft);margin:0 0 8px;text-transform:none}
+  /* search */
+  .search{position:relative;padding:0 14px 6px}
+  .search input{width:100%;font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper-2)}
+  .search input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+  .results{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);overflow:hidden}
+  .results li{padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line-2);line-height:1.4}
+  .results li:last-child{border-bottom:none}
+  .results li:hover{background:#fff}
+  .results .r-name{font-weight:500}
+  .results .r-sub{font-size:11px;color:var(--ink-soft)}
+  /* day tabs */
+  .daytabs{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 4px}
+  .daytab{font-family:inherit;font-size:13px;font-weight:500;padding:7px 12px;border:1px solid var(--line);background:var(--paper-2);border-radius:999px;cursor:pointer;color:var(--ink-soft)}
+  .daytab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .daytab.add{color:var(--accent-ink);border-style:dashed}
+  /* timeline */
+  .timeline{padding:6px 14px 10px;list-style:none;margin:0}
+  .tl-item{position:relative;padding-left:30px}
+  .tl-dot{position:absolute;left:6px;top:18px;width:13px;height:13px;border-radius:50%;border:2.5px solid var(--paper);box-shadow:0 0 0 1.5px var(--line)}
+  .tl-line{position:absolute;left:11.5px;top:30px;bottom:-6px;width:2px;background:var(--line)}
+  .card{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;margin:7px 0;box-shadow:var(--shadow);cursor:pointer;transition:border-color .12s}
+  .card.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(224,101,74,.15),var(--shadow)}
+  .card[draggable=true]{cursor:grab}
+  .card.dragging{opacity:.4}
+  .card.dragover{border-color:var(--accent);border-style:dashed}
+  .c-top{display:flex;align-items:flex-start;gap:8px}
+  .c-name{font-weight:700;font-size:14px;line-height:1.35;flex:1;min-width:0;word-break:break-word}
+  .c-name.done{text-decoration:line-through;color:var(--ink-soft)}
+  .c-cat{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;color:#fff;white-space:nowrap;align-self:center}
+  .c-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:7px;font-size:12px;color:var(--ink-soft);align-items:center}
+  .c-meta .chip{display:inline-flex;align-items:center;gap:4px}
+  .star{cursor:pointer;font-size:15px;line-height:1;color:#d9cdb4}
+  .star.on{color:#e6a900}
+  .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .tag{font-size:10.5px;background:#efe9dc;color:#6a6354;border-radius:6px;padding:2px 6px}
+  /* connector (move between spots) */
+  .move{margin:2px 0 2px 30px;font-size:11.5px;color:var(--ink-soft);display:flex;align-items:center;gap:6px}
+  .move .ln{flex:0 0 auto;width:14px;height:1px;background:var(--line)}
+  .move b{font-weight:700;color:var(--c-move)}
+  /* day summary */
+  .summary{margin:8px 14px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;font-size:12.5px;color:var(--ink-soft);display:flex;gap:14px;flex-wrap:wrap;background:#fffdf8}
+  .summary b{color:var(--ink);font-weight:700}
+  /* checklist */
+  .check li{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13.5px}
+  .check ul{list-style:none;margin:0;padding:0}
+  .check input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+  .check .done{text-decoration:line-through;color:var(--ink-soft)}
+  .check .del{margin-left:auto;color:var(--ink-soft);cursor:pointer;border:none;background:none;font-size:14px;padding:2px 6px}
+  .addrow{display:flex;gap:6px;margin-top:8px}
+  .addrow input{flex:1;font-family:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--paper-2)}
+  /* generic buttons */
+  .btn{font-family:inherit;font-size:13px;font-weight:500;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--paper-2);color:var(--ink);cursor:pointer}
+  .btn:hover{background:#fff}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.pri:hover{background:var(--accent-ink)}
+  .btn.sm{padding:5px 9px;font-size:12px}
+  .btn.icon{padding:6px 8px}
+  .toolrow{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px 18px}
+  /* map */
+  .map-wrap{position:relative;min-width:0}
+  #map{position:absolute;inset:0}
+  .map-ctrl{position:absolute;z-index:500;display:flex;gap:6px}
+  .map-ctrl.tl{top:10px;left:54px}
+  .map-ctrl.tr{top:10px;right:10px;flex-direction:column;align-items:flex-end}
+  .seg{display:flex;background:var(--paper-2);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:var(--shadow)}
+  .seg button{font-family:inherit;font-size:12px;border:none;background:none;padding:7px 11px;cursor:pointer;color:var(--ink-soft)}
+  .seg button.on{background:var(--ink);color:#fff}
+  .map-pill{background:var(--paper-2);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:7px 10px;font-size:12px;color:var(--ink);cursor:pointer}
+  .leaflet-container{font-family:inherit;background:#dfe6e0}
+  .pin{display:grid;place-items:center;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);color:#fff;font-weight:700;font-size:12px;box-shadow:0 2px 5px rgba(0,0,0,.3);border:2px solid #fff}
+  .pin span{transform:rotate(45deg)}
+  /* detail panel */
+  .overlay{position:fixed;inset:0;background:rgba(33,48,63,.28);z-index:1000;display:flex;justify-content:flex-end}
+  .panel{width:420px;max-width:92vw;background:var(--paper);height:100%;overflow-y:auto;box-shadow:-10px 0 30px rgba(33,48,63,.2);animation:slidein .18s ease}
+  @keyframes slidein{from{transform:translateX(30px);opacity:.6}to{transform:none;opacity:1}}
+  .panel-head{position:sticky;top:0;background:var(--paper-2);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;align-items:center;gap:10px;z-index:2}
+  .panel-head h3{font-family:"Zen Kaku Gothic New";font-weight:700;font-size:16px;margin:0;flex:1;word-break:break-word}
+  .panel-body{padding:14px 16px 40px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:5px}
+  .field input,.field textarea,.field select{width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--paper-2);color:var(--ink)}
+  .field textarea{resize:vertical;min-height:64px}
+  .row2{display:flex;gap:10px}.row2>*{flex:1}
+  .catpick{display:flex;flex-wrap:wrap;gap:6px}
+  .catpick button{font-family:inherit;font-size:12px;padding:6px 10px;border-radius:999px;border:1.5px solid var(--line);background:var(--paper-2);cursor:pointer;color:var(--ink-soft)}
+  .catpick button.on{color:#fff;border-color:transparent}
+  .tagpick{display:flex;flex-wrap:wrap;gap:6px}
+  .tagpick button{font-family:inherit;font-size:11.5px;padding:5px 9px;border-radius:7px;border:1px solid var(--line);background:var(--paper-2);cursor:pointer;color:var(--ink-soft)}
+  .tagpick button.on{background:#efe9dc;color:#5b5446;border-color:#ded4bf}
+  .wiki{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--paper-2)}
+  .wiki img{width:100%;height:150px;object-fit:cover;display:block}
+  .wiki .wx{padding:10px 12px;font-size:12.5px;line-height:1.6;color:var(--ink-soft)}
+  .wx-empty{font-size:12.5px;color:var(--ink-soft);padding:4px 0}
+  .weather-days{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+  .wd{flex:0 0 auto;width:62px;text-align:center;border:1px solid var(--line);border-radius:9px;padding:7px 4px;background:var(--paper-2);font-size:11px}
+  .wd .d{color:var(--ink-soft)}
+  .wd .ic{font-size:18px;margin:2px 0}
+  .wd .t{font-weight:700}
+  .wd .t .lo{color:var(--ink-soft);font-weight:400}
+  .wd .pp{color:var(--c-sight);margin-top:2px}
+  .advice{margin-top:8px;font-size:12.5px;background:#fff6ef;border:1px solid #f1d8c9;border-radius:9px;padding:9px 11px;line-height:1.55}
+  .danger{color:var(--accent-ink);background:none;border:none;cursor:pointer;font-size:13px;font-family:inherit;padding:8px 0}
+  .empty{padding:24px 16px;color:var(--ink-soft);font-size:13px;line-height:1.7}
+  .empty b{color:var(--ink)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .err{font-size:12px;color:var(--accent-ink);padding:4px 0}
+  .mobile-toggle{display:none}
+  /* mobile */
+  @media (max-width:820px){
+    .app{grid-template-columns:1fr;grid-template-rows:1fr}
+    .side{grid-row:1;display:flex}
+    .map-wrap{display:none}
+    .app.show-map .side{display:none}
+    .app.show-map .map-wrap{display:block;grid-row:1}
+    .mobile-toggle{display:flex;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1100;background:var(--ink);color:#fff;border:none;border-radius:999px;padding:11px 20px;font-family:inherit;font-weight:700;font-size:14px;box-shadow:0 6px 18px rgba(33,48,63,.3);cursor:pointer;gap:6px}
+    .panel{width:100%}
+  }
+  /* print: clean shiori */
+  @media print{
+    @page{margin:14mm}
+    .side{border:none}
+    .map-wrap,.tripbar,.search,.daytabs .add,.toolrow,.mobile-toggle,.map-ctrl,.brand .sub,.star,.del{display:none !important}
+    .app{display:block;height:auto}
+    body{background:#fff}
+    .scroll{overflow:visible}
+    .card{break-inside:avoid;box-shadow:none}
+    .brand{border:none;padding-bottom:0}
+    .print-date{display:block !important}
+  }
+  .print-date{display:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+/* ============ constants ============ */
+const CATS = {
+  sightseeing:{label:"観光", color:"var(--c-sight)", hex:"#3a7ca5"},
+  food:{label:"食事", color:"var(--c-food)", hex:"#e0654a"},
+  lodging:{label:"宿", color:"var(--c-lodge)", hex:"#7b6aa8"},
+  transport:{label:"移動", color:"var(--c-move)", hex:"#4f9d69"},
+  other:{label:"その他", color:"var(--c-other)", hex:"#8a8a8a"},
+};
+const QUICK_TAGS = ["授乳室あり","ベビーカー可","おむつ替え","トイレ","撮影向き","駐車場","予約必要","バリアフリー","コインロッカー","Wi-Fi"];
+const TILES = {
+  std:{name:"標準", url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", attr:"地理院タイル", max:18},
+  pale:{name:"淡色", url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", attr:"地理院タイル", max:18},
+  photo:{name:"写真", url:"https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg", attr:"地理院タイル（シームレス空中写真）", max:18},
+};
+const WCODE = (c)=>{
+  if(c===0) return ["☀️","快晴"];
+  if([1,2].includes(c)) return ["🌤️","晴れ"];
+  if(c===3) return ["☁️","くもり"];
+  if([45,48].includes(c)) return ["🌫️","霧"];
+  if([51,53,55,56,57].includes(c)) return ["🌦️","霧雨"];
+  if([61,63,65,66,67,80,81,82].includes(c)) return ["🌧️","雨"];
+  if([71,73,75,77,85,86].includes(c)) return ["🌨️","雪"];
+  if([95,96,99].includes(c)) return ["⛈️","雷雨"];
+  return ["🌡️","—"];
+};
+
+/* ============ utils ============ */
+const uid = ()=> Math.random().toString(36).slice(2,9);
+const SKEY = "tabi_shiori_v1";
+const load = ()=>{ try{ return JSON.parse(localStorage.getItem(SKEY)) }catch(e){ return null } };
+const save = (s)=>{ try{ localStorage.setItem(SKEY, JSON.stringify(s)) }catch(e){} };
+const toMin = (hhmm)=>{ if(!hhmm) return null; const [h,m]=hhmm.split(":").map(Number); return h*60+m; };
+const fmtTime = (min)=>{ if(min==null) return ""; min=((min%1440)+1440)%1440; const h=Math.floor(min/60), m=min%60; return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"); };
+const fmtDur = (s)=>{ const m=Math.round(s/60); if(m<60) return m+"分"; return Math.floor(m/60)+"時間"+(m%60? (m%60)+"分":""); };
+const fmtKm = (m)=> (m/1000).toFixed(1)+"km";
+function haversine(a,b){
+  const R=6371000, toR=d=>d*Math.PI/180;
+  const dLat=toR(b.lat-a.lat), dLng=toR(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+
+/* fetch helpers (all browser-callable, key-free) */
+async function geocode(q){
+  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}&countrycodes=jp&limit=6&accept-language=ja`;
+  const r=await fetch(url,{headers:{"Accept":"application/json"}}); if(!r.ok) throw 0;
+  const d=await r.json();
+  return d.map(x=>({name:x.display_name.split(",")[0], full:x.display_name, lat:+x.lat, lng:+x.lon}));
+}
+async function reverse(lat,lng){
+  const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=ja`;
+  try{ const r=await fetch(url); const d=await r.json();
+    const a=d.address||{}; return a.attraction||a.tourism||a.amenity||a.building||a.road||a.suburb||a.city||"選択した地点"; }
+  catch(e){ return "選択した地点"; }
+}
+async function getWeather(lat,lng){
+  const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=7&timezone=Asia%2FTokyo`;
+  const r=await fetch(url); if(!r.ok) throw 0; return (await r.json()).daily;
+}
+async function getWiki(name){
+  const url=`https://ja.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`;
+  const r=await fetch(url); if(!r.ok) return null; const d=await r.json();
+  if(d.type==="disambiguation"||!d.extract) return null;
+  return {extract:d.extract, thumb:d.thumbnail?d.thumbnail.source:null, link:d.content_urls?d.content_urls.desktop.page:null};
+}
+async function getRouteCar(coords){ // coords [{lat,lng}], returns {geometry:[[lat,lng]], legs:[{dist,dur}]}
+  const cs=coords.map(c=>`${c.lng},${c.lat}`).join(";");
+  const url=`https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson`;
+  const r=await fetch(url); if(!r.ok) throw 0; const d=await r.json();
+  if(!d.routes||!d.routes[0]) throw 0;
+  const rt=d.routes[0];
+  return { geometry: rt.geometry.coordinates.map(([lng,lat])=>[lat,lng]),
+           legs: rt.legs.map(l=>({dist:l.distance,dur:l.duration})) };
+}
+
+/* clothing / umbrella advice from a day's weather */
+function advice(day){
+  if(!day) return null;
+  const out=[];
+  const pp=day.pp, hi=day.hi, lo=day.lo;
+  if(pp>=50) out.push("傘は必須。雨具を忘れずに。");
+  else if(pp>=30) out.push("折りたたみ傘があると安心。");
+  if(hi>=30) out.push("真夏日。帽子・水分・日焼け対策を。");
+  else if(hi>=25) out.push("半袖でちょうどよい暑さ。");
+  else if(hi<=10) out.push("しっかり防寒を。コートが必要。");
+  else if(hi<=15) out.push("羽織るものを1枚。");
+  if(hi-lo>=12) out.push("朝晩の冷え込みに注意（寒暖差大）。");
+  return out.length? out.join(" ") : "過ごしやすい一日になりそう。";
+}
+
+/* ============ initial state ============ */
+function freshTrip(name){
+  const d1=uid();
+  return { id:uid(), name:name||"はじめての旅", travelMode:"car",
+    days:[{id:d1,label:"1日目"}], spots:[], checklist:[] };
+}
+function initState(){
+  const s=load();
+  if(s && s.trips && s.trips.length) return s;
+  return { trips:[freshTrip()], currentId:null };
+}
+
+/* ============ Map ============ */
+function MapView({spots, tile, route, mode, onMapClick, onSelect, selectedId, signals}){
+  const elRef=useRef(null), mapRef=useRef(null), tileRef=useRef(null);
+  const markersRef=useRef({}), routeRef=useRef(null), locRef=useRef(null);
+  const hRef=useRef({});
+  hRef.current={onMapClick,onSelect};
+
+  useEffect(()=>{
+    const map=L.map(elRef.current,{zoomControl:true,attributionControl:true}).setView([34.6851,135.8048],11);
+    mapRef.current=map;
+    map.on("click",e=>hRef.current.onMapClick(e.latlng));
+    setTimeout(()=>map.invalidateSize(),200);
+    return ()=>{ map.remove(); mapRef.current=null; };
+  },[]);
+
+  // tiles
+  useEffect(()=>{
+    const map=mapRef.current; if(!map) return;
+    if(tileRef.current) map.removeLayer(tileRef.current);
+    const t=TILES[tile];
+    tileRef.current=L.tileLayer(t.url,{maxZoom:t.max,attribution:`&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">${t.attr}</a>`}).addTo(map);
+  },[tile]);
+
+  // markers
+  useEffect(()=>{
+    const map=mapRef.current; if(!map) return;
+    Object.values(markersRef.current).forEach(m=>map.removeLayer(m));
+    markersRef.current={};
+    spots.forEach((sp,i)=>{
+      const hex=CATS[sp.category].hex;
+      const html=`<div class="pin" style="background:${hex}"><span>${i+1}</span></div>`;
+      const icon=L.divIcon({className:"",html,iconSize:[26,26],iconAnchor:[13,26]});
+      const mk=L.marker([sp.lat,sp.lng],{icon}).addTo(map);
+      mk.on("click",()=>hRef.current.onSelect(sp.id));
+      mk.bindTooltip(`${i+1}. ${sp.name}`,{direction:"top",offset:[0,-24]});
+      markersRef.current[sp.id]=mk;
+    });
+  },[spots]);
+
+  // route
+  useEffect(()=>{
+    const map=mapRef.current; if(!map) return;
+    if(routeRef.current){ map.removeLayer(routeRef.current); routeRef.current=null; }
+    if(route && route.length>1){
+      routeRef.current=L.polyline(route,{color:"#e0654a",weight:4,opacity:.8,dashArray: mode==="walk"?"2 8":null,lineCap:"round"}).addTo(map);
+    }
+  },[route,mode]);
+
+  // fit bounds
+  useEffect(()=>{
+    const map=mapRef.current; if(!map||!spots.length) return;
+    const b=L.latLngBounds(spots.map(s=>[s.lat,s.lng]));
+    map.fitBounds(b,{padding:[60,60],maxZoom:15});
+  },[signals.fit]);
+
+  // locate
+  useEffect(()=>{
+    if(!signals.locate) return;
+    const map=mapRef.current; if(!map) return;
+    if(!navigator.geolocation){ alert("この端末では現在地を取得できません。"); return; }
+    navigator.geolocation.getCurrentPosition(p=>{
+      const ll=[p.coords.latitude,p.coords.longitude];
+      if(locRef.current) map.removeLayer(locRef.current);
+      locRef.current=L.circleMarker(ll,{radius:7,color:"#fff",weight:2,fillColor:"#3a7ca5",fillOpacity:1}).addTo(map);
+      map.setView(ll,14);
+    },()=>alert("現在地を取得できませんでした。位置情報の許可をご確認ください。"));
+  },[signals.locate]);
+
+  return <div ref={elRef} id="map"></div>;
+}
+
+/* ============ Spot card ============ */
+function SpotCard({sp,index,selected,onSelect,onToggleFav,onToggleVisited,dnd,auto}){
+  return (
+    <li className="tl-item">
+      <span className="tl-dot" style={{background:CATS[sp.category].hex}}></span>
+      {!sp._last && <span className="tl-line"></span>}
+      <div className={"card"+(selected?" sel":"")+(dnd.draggingId===sp.id?" dragging":"")+(dnd.overId===sp.id?" dragover":"")}
+        draggable="true"
+        onDragStart={e=>dnd.onStart(sp.id,e)} onDragEnd={dnd.onEnd}
+        onDragOver={e=>{e.preventDefault();dnd.onOver(sp.id)}} onDrop={e=>{e.preventDefault();dnd.onDrop(sp.id)}}
+        onClick={()=>onSelect(sp.id)}>
+        <div className="c-top">
+          <span className={"c-name"+(sp.visited?" done":"")}>{index+1}. {sp.name}</span>
+          <span className="c-cat" style={{background:CATS[sp.category].hex}}>{CATS[sp.category].label}</span>
+        </div>
+        <div className="c-meta">
+          <span className="star" onClick={e=>{e.stopPropagation();onToggleFav(sp.id)}}
+            style={{cursor:"pointer",fontSize:15,color:sp.favorite?"#e6a900":"#d9cdb4"}}>{sp.favorite?"★":"☆"}</span>
+          {sp.arrivalTime
+            ? <span className="chip">🕒 {sp.arrivalTime}</span>
+            : (auto!=null && <span className="chip" style={{opacity:.75}}>🕒 {auto}<span style={{fontSize:10}}>目安</span></span>)}
+          {sp.stayMin>0 && <span className="chip">滞在 {sp.stayMin>=60? Math.floor(sp.stayMin/60)+"時間"+(sp.stayMin%60?sp.stayMin%60+"分":""):sp.stayMin+"分"}</span>}
+          {sp.budget>0 && <span className="chip">¥{Number(sp.budget).toLocaleString()}</span>}
+          <span className="chip" onClick={e=>{e.stopPropagation();onToggleVisited(sp.id)}} style={{cursor:"pointer"}}>
+            {sp.visited?"✅ 行った":"⬜ 未踏"}</span>
+        </div>
+        {sp.tags && sp.tags.length>0 && <div className="tags">{sp.tags.map(t=><span className="tag" key={t}>{t}</span>)}</div>}
+      </div>
+    </li>
+  );
+}
+
+/* ============ Detail panel ============ */
+function DetailPanel({sp,onClose,onChange,onDelete}){
+  const [weather,setWeather]=useState(null), [wLoad,setWLoad]=useState(false), [wErr,setWErr]=useState(false);
+  const [wiki,setWiki]=useState(undefined), [kLoad,setKLoad]=useState(false);
+
+  useEffect(()=>{ // weather
+    let on=true; setWeather(null);setWErr(false);setWLoad(true);
+    getWeather(sp.lat,sp.lng).then(d=>{ if(!on)return;
+      const days=d.time.map((t,i)=>({date:t,code:d.weather_code[i],hi:d.temperature_2m_max[i],lo:d.temperature_2m_min[i],pp:d.precipitation_probability_max[i]}));
+      setWeather(days); setWLoad(false);
+    }).catch(()=>{ if(on){setWErr(true);setWLoad(false);} });
+    return ()=>{on=false};
+  },[sp.id]);
+
+  useEffect(()=>{ // wiki
+    let on=true; setWiki(undefined); setKLoad(true);
+    getWiki(sp.name).then(d=>{ if(on){setWiki(d);setKLoad(false);} }).catch(()=>{ if(on){setWiki(null);setKLoad(false);} });
+    return ()=>{on=false};
+  },[sp.id]);
+
+  const up=(k,v)=>onChange(sp.id,{[k]:v});
+  const toggleTag=(t)=>{ const has=sp.tags.includes(t); up("tags", has? sp.tags.filter(x=>x!==t): [...sp.tags,t]); };
+  const today=weather&&weather[0];
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="panel" onClick={e=>e.stopPropagation()}>
+        <div className="panel-head">
+          <h3>{sp.name}</h3>
+          <button className="btn icon" onClick={onClose} aria-label="閉じる">✕</button>
+        </div>
+        <div className="panel-body">
+          <div className="field">
+            <label>名前</label>
+            <input value={sp.name} onChange={e=>up("name",e.target.value)} />
+          </div>
+          <div className="field">
+            <label>カテゴリ</label>
+            <div className="catpick">{Object.entries(CATS).map(([k,c])=>
+              <button key={k} className={sp.category===k?"on":""}
+                style={sp.category===k?{background:c.hex}:{}} onClick={()=>up("category",k)}>{c.label}</button>)}</div>
+          </div>
+          <div className="row2">
+            <div className="field"><label>到着時刻</label>
+              <input type="time" value={sp.arrivalTime} onChange={e=>up("arrivalTime",e.target.value)} /></div>
+            <div className="field"><label>滞在（分）</label>
+              <input type="number" min="0" step="15" value={sp.stayMin} onChange={e=>up("stayMin",+e.target.value||0)} /></div>
+          </div>
+          <div className="field"><label>予算（円）</label>
+            <input type="number" min="0" value={sp.budget} onChange={e=>up("budget",+e.target.value||0)} /></div>
+          <div className="field"><label>公式サイト・参考リンク</label>
+            <input type="url" placeholder="https://" value={sp.url} onChange={e=>up("url",e.target.value)} />
+            {sp.url && <a href={sp.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:"var(--c-sight)"}}>リンクを開く ↗</a>}</div>
+          <div className="field"><label>メモ</label>
+            <textarea value={sp.memo} onChange={e=>up("memo",e.target.value)} placeholder="やりたいこと、予約番号、注意点など" /></div>
+          <div className="field"><label>設備・特徴タグ</label>
+            <div className="tagpick">{QUICK_TAGS.map(t=>
+              <button key={t} className={sp.tags.includes(t)?"on":""} onClick={()=>toggleTag(t)}>{t}</button>)}</div></div>
+
+          <div className="field"><label>天気予報（向こう7日）</label>
+            {wLoad && <div className="wx-empty"><span className="spin"></span> 読み込み中…</div>}
+            {wErr && <div className="err">天気を取得できませんでした。時間をおいて再度開いてください。</div>}
+            {weather && <>
+              <div className="weather-days">{weather.map(d=>{const[ic]=WCODE(d.code);return(
+                <div className="wd" key={d.date}>
+                  <div className="d">{d.date.slice(5).replace("-","/")}</div>
+                  <div className="ic">{ic}</div>
+                  <div className="t">{Math.round(d.hi)}<span className="lo">/{Math.round(d.lo)}</span></div>
+                  <div className="pp">☔{d.pp}%</div>
+                </div>);})}</div>
+              <div className="advice">💡 {advice(today)}</div>
+            </>}
+          </div>
+
+          <div className="field"><label>このスポットについて</label>
+            {kLoad && <div className="wx-empty"><span className="spin"></span> Wikipediaを検索中…</div>}
+            {wiki===null && <div className="wx-empty">解説が見つかりませんでした。名前を正式名称にすると見つかることがあります。</div>}
+            {wiki && <div className="wiki">
+              {wiki.thumb && <img src={wiki.thumb} alt="" />}
+              <div className="wx">{wiki.extract}{wiki.link && <> <a href={wiki.link} target="_blank" rel="noreferrer" style={{color:"var(--c-sight)"}}>続きを読む ↗</a></>}</div>
+            </div>}
+          </div>
+
+          <button className="danger" onClick={()=>{ if(confirm("このスポットを削除しますか？")) onDelete(sp.id); }}>このスポットを削除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============ App ============ */
+function App(){
+  const [state,setState]=useState(initState);
+  const trip = state.trips.find(t=>t.id===state.currentId) || state.trips[0];
+  useEffect(()=>{ if(state.currentId!==trip.id) setState(s=>({...s,currentId:trip.id})); },[]);
+  useEffect(()=>{ save(state); },[state]);
+
+  const [activeDay,setActiveDay]=useState(trip.days[0].id);
+  useEffect(()=>{ if(!trip.days.find(d=>d.id===activeDay)) setActiveDay(trip.days[0].id); },[trip.id]);
+
+  const [selId,setSelId]=useState(null);
+  const [tile,setTile]=useState("std");
+  const [mode,setMode]=useState(trip.travelMode||"car");
+  const [signals,setSignals]=useState({fit:0,locate:0});
+  const [showMap,setShowMap]=useState(false);
+
+  // search
+  const [q,setQ]=useState(""), [results,setResults]=useState([]), [searching,setSearching]=useState(false);
+  const tRef=useRef();
+  useEffect(()=>{
+    clearTimeout(tRef.current);
+    if(q.trim().length<2){ setResults([]); return; }
+    tRef.current=setTimeout(async()=>{
+      setSearching(true);
+      try{ setResults(await geocode(q)); }catch(e){ setResults([]); }
+      setSearching(false);
+    },450);
+    return ()=>clearTimeout(tRef.current);
+  },[q]);
+
+  /* ---- state mutators ---- */
+  const updTrip=(fn)=> setState(s=>({...s, trips:s.trips.map(t=> t.id===trip.id? fn(t):t)}));
+  const daySpots = useMemo(()=> trip.spots.filter(sp=>sp.dayId===activeDay), [trip.spots,activeDay]);
+
+  const addSpot=(o)=>{
+    const sp={id:uid(),name:o.name,lat:o.lat,lng:o.lng,dayId:activeDay,category:"sightseeing",
+      favorite:false,arrivalTime:"",stayMin:60,memo:"",url:"",budget:0,visited:false,tags:[]};
+    updTrip(t=>({...t,spots:[...t.spots,sp]}));
+    setQ(""); setResults([]);
+    setTimeout(()=>setSignals(s=>({...s,fit:s.fit+1})),60);
+    setSelId(sp.id);
+  };
+  const changeSpot=(id,patch)=> updTrip(t=>({...t,spots:t.spots.map(sp=>sp.id===id?{...sp,...patch}:sp)}));
+  const deleteSpot=(id)=>{ updTrip(t=>({...t,spots:t.spots.filter(sp=>sp.id!==id)})); if(selId===id) setSelId(null); };
+  const toggleFav=(id)=> changeSpot(id,{favorite:!trip.spots.find(s=>s.id===id).favorite});
+  const toggleVisited=(id)=> changeSpot(id,{visited:!trip.spots.find(s=>s.id===id).visited});
+
+  const onMapClick=async(ll)=>{
+    const name=await reverse(ll.lat,ll.lng);
+    addSpot({name,lat:ll.lat,lng:ll.lng});
+  };
+
+  // days
+  const addDay=()=> updTrip(t=>{ const d={id:uid(),label:(t.days.length+1)+"日目"}; setTimeout(()=>setActiveDay(d.id),0); return {...t,days:[...t.days,d]}; });
+  const delDay=()=>{
+    if(trip.days.length<=1){ alert("最後の1日は削除できません。"); return; }
+    if(!confirm("この日と、含まれるスポットを削除しますか？")) return;
+    updTrip(t=>{ const days=t.days.filter(d=>d.id!==activeDay).map((d,i)=>({...d,label:(i+1)+"日目"}));
+      const spots=t.spots.filter(sp=>sp.dayId!==activeDay); setTimeout(()=>setActiveDay(days[0].id),0);
+      return {...t,days,spots}; });
+  };
+
+  // trips
+  const newTrip=()=>{ const t=freshTrip("新しい旅 "+(state.trips.length+1)); setState(s=>({...s,trips:[...s.trips,t],currentId:t.id})); setActiveDay(t.days[0].id); setSelId(null); };
+  const switchTrip=(id)=>{ setState(s=>({...s,currentId:id})); const t=state.trips.find(x=>x.id===id); setActiveDay(t.days[0].id); setSelId(null); };
+  const renameTrip=()=>{ const n=prompt("旅の名前",trip.name); if(n!=null && n.trim()) updTrip(t=>({...t,name:n.trim()})); };
+  const delTrip=()=>{ if(state.trips.length<=1){alert("最後の旅は削除できません。");return;} if(!confirm("この旅を削除しますか？")) return;
+    setState(s=>{ const trips=s.trips.filter(t=>t.id!==trip.id); return {...s,trips,currentId:trips[0].id}; }); };
+
+  // checklist
+  const [clText,setClText]=useState("");
+  const addCl=()=>{ if(!clText.trim())return; updTrip(t=>({...t,checklist:[...t.checklist,{id:uid(),text:clText.trim(),done:false}]})); setClText(""); };
+  const toggleCl=(id)=> updTrip(t=>({...t,checklist:t.checklist.map(c=>c.id===id?{...c,done:!c.done}:c)}));
+  const delCl=(id)=> updTrip(t=>({...t,checklist:t.checklist.filter(c=>c.id!==id)}));
+
+  // travel mode persist
+  useEffect(()=>{ updTrip(t=>({...t,travelMode:mode})); },[mode]);
+
+  /* ---- routing & timeline for active day ---- */
+  const [legs,setLegs]=useState([]); // {dist,dur} between i and i+1
+  const [routeGeo,setRouteGeo]=useState(null);
+  const [routeLoad,setRouteLoad]=useState(false), [routeErr,setRouteErr]=useState(false);
+  const rRef=useRef();
+  useEffect(()=>{
+    clearTimeout(rRef.current); setRouteErr(false);
+    if(daySpots.length<2){ setLegs([]); setRouteGeo(null); return; }
+    rRef.current=setTimeout(async()=>{
+      if(mode==="walk"){
+        // straight-line estimate, 80m/min
+        const lg=[],geo=[];
+        for(let i=0;i<daySpots.length-1;i++){ const d=haversine(daySpots[i],daySpots[i+1]); lg.push({dist:d,dur:d/80*60}); }
+        daySpots.forEach(s=>geo.push([s.lat,s.lng]));
+        setLegs(lg); setRouteGeo(geo); return;
+      }
+      setRouteLoad(true);
+      try{ const r=await getRouteCar(daySpots); setLegs(r.legs); setRouteGeo(r.geometry); }
+      catch(e){
+        const lg=[]; for(let i=0;i<daySpots.length-1;i++){ const d=haversine(daySpots[i],daySpots[i+1]); lg.push({dist:d,dur:d/600*60,est:true}); }
+        setLegs(lg); setRouteGeo(daySpots.map(s=>[s.lat,s.lng])); setRouteErr(true);
+      }
+      setRouteLoad(false);
+    },500);
+    return ()=>clearTimeout(rRef.current);
+  },[daySpots.map(s=>s.id+s.lat).join(","),mode]);
+
+  // timeline arrival auto-calc (uses first spot arrivalTime as anchor)
+  const timeline=useMemo(()=>{
+    let cur=null; const anchor=daySpots.find(s=>s.arrivalTime);
+    if(anchor) cur=toMin(anchor.arrivalTime);
+    const arr=[];
+    daySpots.forEach((sp,i)=>{
+      if(i>0 && cur!=null && legs[i-1]) cur+=Math.round(legs[i-1].dur/60);
+      const a = sp.arrivalTime? toMin(sp.arrivalTime) : cur;
+      arr.push(a);
+      cur = (a!=null? a:cur);
+      if(cur!=null) cur+=(sp.stayMin||0);
+    });
+    return arr;
+  },[daySpots,legs]);
+
+  const totals=useMemo(()=>{
+    const dist=legs.reduce((a,l)=>a+l.dist,0);
+    const move=legs.reduce((a,l)=>a+l.dur,0);
+    const stay=daySpots.reduce((a,s)=>a+(s.stayMin||0),0)*60;
+    const budget=daySpots.reduce((a,s)=>a+(+s.budget||0),0);
+    return {dist,move,stay,budget};
+  },[legs,daySpots]);
+
+  const tripBudget=useMemo(()=> trip.spots.reduce((a,s)=>a+(+s.budget||0),0),[trip.spots]);
+
+  /* ---- drag & drop reorder within active day ---- */
+  const [draggingId,setDraggingId]=useState(null),[overId,setOverId]=useState(null);
+  const dnd={
+    draggingId, overId,
+    onStart:(id)=>setDraggingId(id),
+    onEnd:()=>{setDraggingId(null);setOverId(null);},
+    onOver:(id)=>{ if(id!==overId) setOverId(id); },
+    onDrop:(targetId)=>{
+      if(!draggingId||draggingId===targetId){setDraggingId(null);setOverId(null);return;}
+      updTrip(t=>{
+        const ds=t.spots.filter(s=>s.dayId===activeDay);
+        const others=t.spots.filter(s=>s.dayId!==activeDay);
+        const from=ds.findIndex(s=>s.id===draggingId), to=ds.findIndex(s=>s.id===targetId);
+        const arr=[...ds]; const [m]=arr.splice(from,1); arr.splice(to,0,m);
+        return {...t,spots:[...others,...arr]};
+      });
+      setDraggingId(null);setOverId(null);
+      setTimeout(()=>setSignals(s=>({...s,fit:s.fit+1})),40);
+    }
+  };
+
+  /* ---- export / import ---- */
+  const exportJSON=()=>{
+    const blob=new Blob([JSON.stringify(trip,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=(trip.name||"tabi")+".json"; a.click(); URL.revokeObjectURL(a.href);
+  };
+  const importJSON=(e)=>{
+    const f=e.target.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{ try{ const t=JSON.parse(rd.result); t.id=uid();
+      if(!t.days||!t.spots) throw 0;
+      setState(s=>({...s,trips:[...s.trips,t],currentId:t.id})); setActiveDay(t.days[0].id);
+    }catch(err){ alert("読み込めませんでした。書き出したJSONファイルを選んでください。"); } };
+    rd.readAsText(f); e.target.value="";
+  };
+
+  const selSpot = trip.spots.find(s=>s.id===selId);
+  const sortedDay = daySpots.map((s,i)=>({...s,_last:i===daySpots.length-1}));
+
+  return (
+    <div className={"app"+(showMap?" show-map":"")}>
+      {/* ---------------- sidebar ---------------- */}
+      <aside className="side">
+        <div className="brand">
+          <div className="mark">栞</div>
+          <div><h1>旅のしおり</h1><div className="sub print-date" id="pd"></div><div className="sub">国内旅行プランナー</div></div>
+        </div>
+
+        <div className="tripbar">
+          <select value={trip.id} onChange={e=>switchTrip(e.target.value)}>
+            {state.trips.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <button className="btn icon" title="名前を変更" onClick={renameTrip}>✎</button>
+          <button className="btn icon" title="新しい旅" onClick={newTrip}>＋</button>
+          <button className="btn icon" title="この旅を削除" onClick={delTrip}>🗑</button>
+        </div>
+
+        <div className="scroll">
+          {/* search */}
+          <div className="sec" style={{paddingBottom:0}}><h2>スポットを探して追加</h2></div>
+          <div className="search">
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="地名・施設名で検索（例：東大寺）" />
+            {searching && <div className="err" style={{color:"var(--ink-soft)"}}><span className="spin"></span> 検索中…</div>}
+            {results.length>0 && <ul className="results">
+              {results.map((r,i)=><li key={i} onClick={()=>addSpot(r)}>
+                <div className="r-name">{r.name}</div><div className="r-sub">{r.full}</div></li>)}
+            </ul>}
+            <div style={{fontSize:11,color:"var(--ink-soft)",marginTop:6}}>地図をクリックして任意地点を追加することもできます。</div>
+          </div>
+
+          {/* day tabs */}
+          <div className="sec" style={{paddingBottom:4}}><h2>日程</h2></div>
+          <div className="daytabs">
+            {trip.days.map(d=><button key={d.id} className={"daytab"+(d.id===activeDay?" active":"")} onClick={()=>setActiveDay(d.id)}>{d.label}</button>)}
+            <button className="daytab add" onClick={addDay}>＋ 日を追加</button>
+            {trip.days.length>1 && <button className="daytab" onClick={delDay} title="この日を削除">－</button>}
+          </div>
+
+          {/* day summary */}
+          {daySpots.length>0 && <div className="summary">
+            <span>スポット <b>{daySpots.length}</b></span>
+            {legs.length>0 && <span>移動 <b>{fmtDur(totals.move)}</b></span>}
+            {legs.length>0 && <span>距離 <b>{fmtKm(totals.dist)}</b></span>}
+            <span>滞在 <b>{fmtDur(totals.stay)}</b></span>
+            {totals.budget>0 && <span>予算 <b>¥{totals.budget.toLocaleString()}</b></span>}
+            {routeLoad && <span><span className="spin"></span></span>}
+          </div>}
+          {routeErr && <div className="sec" style={{paddingTop:0}}><div className="err">経路サーバーが混雑中のため、移動時間は直線距離からの概算です。</div></div>}
+
+          {/* timeline */}
+          {daySpots.length===0 ? (
+            <div className="empty">
+              <b>この日はまだ空です。</b><br/>
+              上の検索からスポットを足すか、右の地図をクリックして地点を追加しましょう。番号順に地図上で結ばれ、移動時間が自動で計算されます。
+            </div>
+          ) : (
+            <ul className="timeline">
+              {sortedDay.map((sp,i)=><React.Fragment key={sp.id}>
+                <SpotCard sp={sp} index={i} selected={sp.id===selId} onSelect={setSelId}
+                  onToggleFav={toggleFav} onToggleVisited={toggleVisited} dnd={dnd}
+                  auto={!sp.arrivalTime && timeline[i]!=null ? fmtTime(timeline[i]) : null}/>
+                {i<sortedDay.length-1 && legs[i] && <div className="move">
+                  <span className="ln"></span>{mode==="walk"?"🚶":"🚗"} <b>{fmtDur(legs[i].dur)}</b> ・ {fmtKm(legs[i].dist)}{legs[i].est?"（概算）":""}
+                </div>}
+              </React.Fragment>)}
+            </ul>
+          )}
+
+          {/* checklist */}
+          <div className="sec check"><h2>持ち物・やることリスト</h2>
+            <ul>{trip.checklist.map(c=><li key={c.id}>
+              <input type="checkbox" checked={c.done} onChange={()=>toggleCl(c.id)} />
+              <span className={c.done?"done":""}>{c.text}</span>
+              <button className="del" onClick={()=>delCl(c.id)}>✕</button>
+            </li>)}</ul>
+            <div className="addrow">
+              <input value={clText} onChange={e=>setClText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCl()} placeholder="例：モバイルバッテリー" />
+              <button className="btn" onClick={addCl}>追加</button>
+            </div>
+          </div>
+
+          {/* tools */}
+          <div className="sec" style={{paddingBottom:2}}><h2>保存・書き出し</h2>
+            <div style={{fontSize:11,color:"var(--ink-soft)"}}>編集内容はこの端末に自動保存されます。</div></div>
+          <div className="toolrow">
+            <button className="btn" onClick={exportJSON}>JSONで保存</button>
+            <label className="btn" style={{cursor:"pointer"}}>JSONを読み込む
+              <input type="file" accept="application/json" onChange={importJSON} style={{display:"none"}} /></label>
+            <button className="btn" onClick={()=>window.print()}>印刷用しおり</button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ---------------- map ---------------- */}
+      <div className="map-wrap">
+        <div className="map-ctrl tl">
+          <div className="seg">
+            {Object.entries(TILES).map(([k,t])=><button key={k} className={tile===k?"on":""} onClick={()=>setTile(k)}>{t.name}</button>)}
+          </div>
+        </div>
+        <div className="map-ctrl tr">
+          <div className="seg">
+            <button className={mode==="car"?"on":""} onClick={()=>setMode("car")}>🚗 車</button>
+            <button className={mode==="walk"?"on":""} onClick={()=>setMode("walk")}>🚶 徒歩</button>
+          </div>
+          <div className="map-pill" onClick={()=>setSignals(s=>({...s,fit:s.fit+1}))}>全体表示</div>
+          <div className="map-pill" onClick={()=>setSignals(s=>({...s,locate:s.locate+1}))}>現在地</div>
+        </div>
+        <MapView spots={daySpots} tile={tile} route={routeGeo} mode={mode}
+          onMapClick={onMapClick} onSelect={setSelId} selectedId={selId} signals={signals}/>
+      </div>
+
+      {/* mobile toggle */}
+      <button className="mobile-toggle" onClick={()=>setShowMap(m=>!m)}>{showMap?"📋 しおりへ":"🗺 地図を見る"}</button>
+
+      {/* detail */}
+      {selSpot && <DetailPanel sp={selSpot} onClose={()=>setSelId(null)} onChange={changeSpot} onDelete={deleteSpot}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+// fill print date
+setTimeout(()=>{const el=document.getElementById("pd"); if(el) el.textContent=new Date().toLocaleDateString("ja-JP");},300);
+</script>
+</body>
+</html>
