@@ -90,46 +90,16 @@ npx playwright install chromium
 
 `vite.config.ts` は `base: './'`（相対パス）＋ `HashRouter` 構成のため、**リポジトリ名に依存せず**サブパス配信でそのまま動きます。サーバー側のリライト設定も不要です。
 
-手動公開（例）:
+手動で成果物を確認する場合:
 
 ```bash
 npm run build
-# dist/ の中身を gh-pages ブランチ（または /docs）として公開設定する
-# 例: npx gh-pages -d dist   ← gh-pages を使う場合
+# dist/ が生成されます
 ```
 
-GitHub Actions で公開する場合の例（`.github/workflows/deploy.yml` として追加）:
+GitHub Actions で公開する workflow は [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) に用意済みです。`main` ブランチへの push、または Actions 画面からの手動実行で `npm ci` → `npm run build` → GitHub Pages deploy が走ります。
 
-```yaml
-name: Deploy to GitHub Pages
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: dist }
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: { name: github-pages, url: '${{ steps.deployment.outputs.page_url }}' }
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-```
-
-その後、リポジトリの **Settings → Pages → Source** を「GitHub Actions」に設定します。
+初回のみ、リポジトリの **Settings → Pages → Source** を「GitHub Actions」に設定します。
 
 ## 現在実装済みの機能
 
