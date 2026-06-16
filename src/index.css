@@ -1,0 +1,144 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens for Tabiori.
+  Palette: warm "paper" tones with a terracotta accent — quiet enough for long
+  sessions, with a hint of the anticipation of a trip. Light mode only (Phase 1).
+*/
+:root {
+  --paper: #f7f4ed;
+  --paper-2: #fffdf8;
+  --ink: #21303f;
+  --ink-soft: #5d6b77;
+  --ink-faint: #8a95a0;
+  --line: #e7e0d2;
+  --line-strong: #d9d0bd;
+  --accent: #d9583c;
+  --accent-strong: #b94a32;
+  --accent-soft: #fbeae4;
+
+  /* shadcn-style semantic tokens mapped onto the palette */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper-2);
+  --card-foreground: var(--ink);
+  --popover: var(--paper-2);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: #fff8f4;
+  --secondary: #efe9dc;
+  --secondary-foreground: var(--ink);
+  --muted: #f1ece1;
+  --muted-foreground: var(--ink-soft);
+  --accent-bg: var(--accent-soft);
+  --accent-foreground: var(--accent-strong);
+  --destructive: #c0392b;
+  --destructive-foreground: #fff7f5;
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--accent);
+  --radius: 0.75rem;
+
+  /* Category colors (also encoded by shape/icon, never color alone) */
+  --cat-sightseeing: #3a7ca5;
+  --cat-food: #d9583c;
+  --cat-cafe: #b5792a;
+  --cat-lodging: #7b6aa8;
+  --cat-shopping: #c45c93;
+  --cat-transport: #4f9d69;
+  --cat-other: #7a8893;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent-bg);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans:
+    'Noto Sans JP', system-ui, -apple-system, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+  --font-display: 'Zen Kaku Gothic New', 'Noto Sans JP', system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'palt' 1;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  /* Visible, consistent focus ring for keyboard users. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Leaflet adjustments so map controls match the warm theme. */
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: #eef1f0;
+}
+
+.leaflet-bar a {
+  color: var(--ink);
+}
+
+.tabiori-pin {
+  background: transparent;
+  border: 0;
+}
