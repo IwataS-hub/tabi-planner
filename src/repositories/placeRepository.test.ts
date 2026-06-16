@@ -35,6 +35,31 @@ describe('placeRepository.add', () => {
     expect(b.order).toBe(1);
   });
 
+  it('keeps order unique when spots are added concurrently', async () => {
+    const { tripId, dayId } = await seed();
+
+    await Promise.all([
+      placeRepository.add({ tripId, dayId, ...coords(0) }),
+      placeRepository.add({ tripId, dayId, ...coords(1) }),
+      placeRepository.add({ tripId, dayId, ...coords(2) }),
+    ]);
+
+    const list = await placeRepository.listByDay(dayId);
+    expect(list.map((p) => p.order)).toEqual([0, 1, 2]);
+  });
+
+  it('rejects a day that belongs to a different trip', async () => {
+    const first = await seed();
+    const second = await seed();
+
+    await expect(
+      placeRepository.add({ tripId: first.tripId, dayId: second.dayId, ...coords(0) }),
+    ).rejects.toThrow('一致しません');
+
+    expect(await placeRepository.listByTrip(first.tripId)).toHaveLength(0);
+    expect(await placeRepository.listByTrip(second.tripId)).toHaveLength(0);
+  });
+
   it('bumps the parent trip updatedAt', async () => {
     const { tripId, dayId } = await seed();
     const before = await tripRepository.get(tripId);
@@ -66,6 +91,20 @@ describe('placeRepository.update', () => {
     expect(updated.stayMinutes).toBe(90);
     expect(updated.estimatedCost).toBe(400);
     expect(updated.memo).toBe('紅葉');
+  });
+
+  it('preserves independent fields when updates overlap', async () => {
+    const { tripId, dayId } = await seed();
+    const place = await placeRepository.add({ tripId, dayId, name: '元の名前', ...coords(0) });
+
+    await Promise.all([
+      placeRepository.update(place.id, { name: '清水寺' }),
+      placeRepository.update(place.id, { memo: '夕方に行く' }),
+    ]);
+
+    const [updated] = await placeRepository.listByDay(dayId);
+    expect(updated.name).toBe('清水寺');
+    expect(updated.memo).toBe('夕方に行く');
   });
 });
 

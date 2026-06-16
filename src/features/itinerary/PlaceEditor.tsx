@@ -16,7 +16,7 @@ import { CategoryIcon } from '@/components/CategoryIcon';
 import { CATEGORY_LIST } from '@/domain/categories';
 import type { Place, PlaceCategory } from '@/domain/types';
 import { DEFAULT_PLACE_NAME, type PlacePatch } from '@/repositories/placeRepository';
-import { isHttpUrl, parseNonNegativeIntOrNull } from '@/lib/utils';
+import { isHttpUrl } from '@/lib/utils';
 
 interface PlaceEditorProps {
   place: Place;
@@ -50,6 +50,22 @@ function toForm(place: Place): PlaceForm {
   };
 }
 
+function parseOptionalInt(
+  value: string,
+  max: number,
+): { valid: true; value: number | null } | { valid: false } {
+  const trimmed = value.trim();
+  if (trimmed === '') return { valid: true, value: null };
+  if (!/^\d+$/.test(trimmed)) return { valid: false };
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed > max) return { valid: false };
+  return { valid: true, value: parsed };
+}
+
+function validOptionalInt(value: string, max: number): boolean {
+  return parseOptionalInt(value, max).valid;
+}
+
 /** Build a patch of only the fields that changed; skip an invalid URL. */
 function buildPatch(current: PlaceForm, saved: PlaceForm): PlacePatch | null {
   const patch: PlacePatch = {};
@@ -59,13 +75,16 @@ function buildPatch(current: PlaceForm, saved: PlaceForm): PlacePatch | null {
     patch.startTime = current.startTime === '' ? null : current.startTime;
   }
   if (current.stayMinutes !== saved.stayMinutes) {
-    patch.stayMinutes = parseNonNegativeIntOrNull(current.stayMinutes);
+    const parsed = parseOptionalInt(current.stayMinutes, 1440);
+    if (parsed.valid) patch.stayMinutes = parsed.value;
   }
   if (current.travelMinutes !== saved.travelMinutes) {
-    patch.travelMinutes = parseNonNegativeIntOrNull(current.travelMinutes);
+    const parsed = parseOptionalInt(current.travelMinutes, 1440);
+    if (parsed.valid) patch.travelMinutes = parsed.value;
   }
   if (current.estimatedCost !== saved.estimatedCost) {
-    patch.estimatedCost = parseNonNegativeIntOrNull(current.estimatedCost);
+    const parsed = parseOptionalInt(current.estimatedCost, 100_000_000);
+    if (parsed.valid) patch.estimatedCost = parsed.value;
   }
   if (current.memo !== saved.memo) patch.memo = current.memo;
   if (current.url !== saved.url && (current.url === '' || isHttpUrl(current.url))) {
@@ -128,6 +147,9 @@ export function PlaceEditor({
   const update = (patch: Partial<PlaceForm>) => setForm((prev) => ({ ...prev, ...patch }));
 
   const urlInvalid = form.url !== '' && !isHttpUrl(form.url);
+  const stayInvalid = !validOptionalInt(form.stayMinutes, 1440);
+  const travelInvalid = !validOptionalInt(form.travelMinutes, 1440);
+  const costInvalid = !validOptionalInt(form.estimatedCost, 100_000_000);
   const nameEmpty = form.name.trim() === '';
 
   return (
@@ -195,11 +217,20 @@ export function PlaceEditor({
             type="number"
             inputMode="numeric"
             min={0}
+            max={1440}
+            step={1}
             value={form.stayMinutes}
             onChange={(event) => update({ stayMinutes: event.target.value })}
             onBlur={flush}
             placeholder="例：60"
+            aria-invalid={stayInvalid}
+            aria-describedby={stayInvalid ? `${fieldId}-stay-error` : undefined}
           />
+          {stayInvalid ? (
+            <p id={`${fieldId}-stay-error`} className="text-destructive text-xs">
+              0〜1440の整数で入力してください（この項目は保存されません）。
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">
@@ -209,11 +240,20 @@ export function PlaceEditor({
             type="number"
             inputMode="numeric"
             min={0}
+            max={1440}
+            step={1}
             value={form.travelMinutes}
             onChange={(event) => update({ travelMinutes: event.target.value })}
             onBlur={flush}
             placeholder="手動入力"
+            aria-invalid={travelInvalid}
+            aria-describedby={travelInvalid ? `${fieldId}-travel-error` : undefined}
           />
+          {travelInvalid ? (
+            <p id={`${fieldId}-travel-error`} className="text-destructive text-xs">
+              0〜1440の整数で入力してください（この項目は保存されません）。
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">
@@ -223,11 +263,20 @@ export function PlaceEditor({
             type="number"
             inputMode="numeric"
             min={0}
+            max={100_000_000}
+            step={1}
             value={form.estimatedCost}
             onChange={(event) => update({ estimatedCost: event.target.value })}
             onBlur={flush}
             placeholder="例：1500"
+            aria-invalid={costInvalid}
+            aria-describedby={costInvalid ? `${fieldId}-cost-error` : undefined}
           />
+          {costInvalid ? (
+            <p id={`${fieldId}-cost-error`} className="text-destructive text-xs">
+              0〜100,000,000の整数で入力してください（この項目は保存されません）。
+            </p>
+          ) : null}
         </div>
       </div>
 

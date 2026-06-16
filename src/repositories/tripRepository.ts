@@ -4,7 +4,12 @@ import type { PlaceRecord, TripDayRecord, TripRecord } from '@/db/records';
 import { CURRENT_SCHEMA_VERSION, type Trip, type TripDay } from '@/domain/types';
 import { eachDateInRange } from '@/lib/date';
 import { createId } from '@/lib/utils';
-import { tripDayRecordSchema, tripRecordSchema } from '@/validation/schemas';
+import {
+  placeRecordSchema,
+  tripDayRecordSchema,
+  tripFormSchema,
+  tripRecordSchema,
+} from '@/validation/schemas';
 import { nowIso, validateRecord } from './shared';
 
 export interface TripDraft {
@@ -35,7 +40,11 @@ function buildDayRecords(tripId: string, startDate: string, endDate: string): Tr
  * dates are added, and dates that fall out of range are removed. Places on a
  * removed day are moved to the last remaining day so nothing is silently lost.
  */
-async function syncDays(tripId: string, startDate: string, endDate: string): Promise<void> {
+async function syncDaysInTransaction(
+  tripId: string,
+  startDate: string,
+  endDate: string,
+): Promise<void> {
   const desiredDates = eachDateInRange(startDate, endDate);
   const existing = await db.days.where('tripId').equals(tripId).toArray();
   const existingByDate = new Map(existing.map((day) => [day.date, day]));
@@ -49,27 +58,31 @@ async function syncDays(tripId: string, startDate: string, endDate: string): Pro
   const removedDays = existing.filter((day) => !keptIds.has(day.id));
   const lastDayId = nextDays.at(-1)?.id;
 
-  await db.transaction('rw', db.days, db.places, async () => {
-    if (removedDays.length > 0 && lastDayId) {
-      const removedIds = removedDays.map((day) => day.id);
-      const orphans = await db.places.where('dayId').anyOf(removedIds).toArray();
-      if (orphans.length > 0) {
-        const tail = await db.places.where('dayId').equals(lastDayId).count();
-        const moved = orphans
-          .sort((a, b) => a.order - b.order)
-          .map((place, index) => ({ ...place, dayId: lastDayId, order: tail + index }));
-        await db.places.bulkPut(moved);
-      }
-      await db.days.bulkDelete(removedIds);
-    } else if (removedDays.length > 0) {
-      // No remaining days (only possible on an empty range, which validation
-      // prevents) — drop the orphaned places rather than leak them.
-      const removedIds = removedDays.map((day) => day.id);
-      await db.places.where('dayId').anyOf(removedIds).delete();
-      await db.days.bulkDelete(removedIds);
+  if (removedDays.length > 0 && lastDayId) {
+    const removedIds = removedDays.map((day) => day.id);
+    const removedOrder = new Map(removedDays.map((day) => [day.id, day.order]));
+    const orphans = await db.places.where('dayId').anyOf(removedIds).toArray();
+    if (orphans.length > 0) {
+      const lastDayPlaces = await db.places.where('dayId').equals(lastDayId).sortBy('order');
+      const tail =
+        lastDayPlaces.length === 0 ? 0 : Math.max(...lastDayPlaces.map((p) => p.order)) + 1;
+      const moved = orphans
+        .sort((a, b) => {
+          const dayDelta = (removedOrder.get(a.dayId) ?? 0) - (removedOrder.get(b.dayId) ?? 0);
+          return dayDelta || a.order - b.order;
+        })
+        .map((place, index) => ({ ...place, dayId: lastDayId, order: tail + index }));
+      await db.places.bulkPut(moved);
     }
-    await db.days.bulkPut(nextDays);
-  });
+    await db.days.bulkDelete(removedIds);
+  } else if (removedDays.length > 0) {
+    // No remaining days (only possible on an empty range, which validation
+    // prevents) — drop the orphaned places rather than leak them.
+    const removedIds = removedDays.map((day) => day.id);
+    await db.places.where('dayId').anyOf(removedIds).delete();
+    await db.days.bulkDelete(removedIds);
+  }
+  await db.days.bulkPut(nextDays);
 }
 
 export const tripRepository = {
@@ -92,23 +105,24 @@ export const tripRepository = {
   },
 
   async create(draft: TripDraft): Promise<Trip> {
+    const values = validateRecord(tripFormSchema, draft, '旅行の作成');
     const now = nowIso();
     const id = createId();
     const record: TripRecord = validateRecord(
       tripRecordSchema,
       {
         id,
-        title: draft.title,
-        description: draft.description,
-        startDate: draft.startDate,
-        endDate: draft.endDate,
+        title: values.title,
+        description: values.description,
+        startDate: values.startDate,
+        endDate: values.endDate,
         createdAt: now,
         updatedAt: now,
         schemaVersion: CURRENT_SCHEMA_VERSION,
       },
       '旅行の作成',
     );
-    const days = buildDayRecords(id, draft.startDate, draft.endDate).map((day) =>
+    const days = buildDayRecords(id, values.startDate, values.endDate).map((day) =>
       validateRecord(tripDayRecordSchema, day, '日付データ'),
     );
     await db.transaction('rw', db.trips, db.days, async () => {
@@ -119,27 +133,33 @@ export const tripRepository = {
   },
 
   async updateDetails(id: string, draft: TripDraft): Promise<Trip> {
-    const existing = await db.trips.get(id);
-    if (!existing) throw new Error(`旅行が見つかりません: ${id}`);
-    const datesChanged =
-      existing.startDate !== draft.startDate || existing.endDate !== draft.endDate;
-    const record: TripRecord = validateRecord(
-      tripRecordSchema,
-      {
-        ...existing,
-        title: draft.title,
-        description: draft.description,
-        startDate: draft.startDate,
-        endDate: draft.endDate,
-        updatedAt: nowIso(),
-      },
-      '旅行の更新',
-    );
-    await db.trips.put(record);
-    if (datesChanged) {
-      await syncDays(id, draft.startDate, draft.endDate);
-    }
-    return tripFromRecord(record);
+    const values = validateRecord(tripFormSchema, draft, '旅行の更新');
+    let saved: TripRecord | undefined;
+    await db.transaction('rw', db.trips, db.days, db.places, async () => {
+      const existing = await db.trips.get(id);
+      if (!existing) throw new Error(`旅行が見つかりません: ${id}`);
+      const current = validateRecord(tripRecordSchema, existing, '旅行データ');
+      const datesChanged =
+        current.startDate !== values.startDate || current.endDate !== values.endDate;
+      saved = validateRecord(
+        tripRecordSchema,
+        {
+          ...current,
+          title: values.title,
+          description: values.description,
+          startDate: values.startDate,
+          endDate: values.endDate,
+          updatedAt: nowIso(),
+        },
+        '旅行の更新',
+      );
+      await db.trips.put(saved);
+      if (datesChanged) {
+        await syncDaysInTransaction(id, values.startDate, values.endDate);
+      }
+    });
+    if (!saved) throw new Error('旅行の更新に失敗しました');
+    return tripFromRecord(saved);
   },
 
   /** Bump only the trip's updatedAt (called by place edits to reflect recency). */
@@ -148,9 +168,12 @@ export const tripRepository = {
   },
 
   async duplicate(id: string): Promise<Trip> {
-    const source = await db.trips.get(id);
-    if (!source) throw new Error(`旅行が見つかりません: ${id}`);
-    const days = await db.days.where('tripId').equals(id).toArray();
+    const sourceRecord = await db.trips.get(id);
+    if (!sourceRecord) throw new Error(`旅行が見つかりません: ${id}`);
+    const source = validateRecord(tripRecordSchema, sourceRecord, '旅行データ');
+    const days = (await db.days.where('tripId').equals(id).toArray()).map((day) =>
+      validateRecord(tripDayRecordSchema, day, '日付データ'),
+    );
     const places = await db.places.where('tripId').equals(id).toArray();
 
     const now = nowIso();
@@ -169,14 +192,23 @@ export const tripRepository = {
       dayIdMap.set(day.id, newId);
       return { ...day, id: newId, tripId: newTripId };
     });
-    const newPlaces: PlaceRecord[] = places.map((place) => ({
-      ...place,
-      id: createId(),
-      tripId: newTripId,
-      dayId: dayIdMap.get(place.dayId) ?? place.dayId,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    const newPlaces: PlaceRecord[] = places.map((record) => {
+      const place = validateRecord(placeRecordSchema, record, 'スポットデータ');
+      const dayId = dayIdMap.get(place.dayId);
+      if (!dayId) throw new Error(`スポットの日付データが見つかりません: ${place.id}`);
+      return validateRecord(
+        placeRecordSchema,
+        {
+          ...place,
+          id: createId(),
+          tripId: newTripId,
+          dayId,
+          createdAt: now,
+          updatedAt: now,
+        },
+        'スポットの複製',
+      );
+    });
 
     await db.transaction('rw', db.trips, db.days, db.places, async () => {
       await db.trips.add(newTrip);

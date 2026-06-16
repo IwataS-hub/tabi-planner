@@ -21,6 +21,20 @@ describe('tripRepository.create', () => {
     expect(days.map((day) => day.date)).toEqual(['2026-07-01', '2026-07-02', '2026-07-03']);
     expect(days.map((day) => day.order)).toEqual([0, 1, 2]);
   });
+
+  it('applies form validation at the repository boundary', async () => {
+    await expect(
+      tripRepository.create({
+        title: '長すぎる旅行',
+        description: '',
+        startDate: '2026-01-01',
+        endDate: '2026-12-31',
+      }),
+    ).rejects.toThrow('最大60日');
+
+    expect(await db.trips.count()).toBe(0);
+    expect(await db.days.count()).toBe(0);
+  });
 });
 
 describe('tripRepository.updateDetails', () => {

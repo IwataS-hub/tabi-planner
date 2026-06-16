@@ -1,10 +1,10 @@
 import { db } from '@/db/database';
-import { placeFromRecord } from '@/db/mappers';
+import { dayFromRecord, placeFromRecord } from '@/db/mappers';
 import type { PlaceRecord } from '@/db/records';
 import { DEFAULT_CATEGORY } from '@/domain/categories';
 import type { Place, PlaceCategory } from '@/domain/types';
 import { createId } from '@/lib/utils';
-import { placeRecordSchema } from '@/validation/schemas';
+import { placeRecordSchema, tripDayRecordSchema } from '@/validation/schemas';
 import { nowIso, validateRecord } from './shared';
 
 export const DEFAULT_PLACE_NAME = '名称未設定';
@@ -56,56 +56,67 @@ export const placeRepository = {
 
   /** Append a new spot to the end of its day. */
   async add(input: NewPlaceInput): Promise<Place> {
-    const now = nowIso();
-    const order = await db.places.where('dayId').equals(input.dayId).count();
-    const record: PlaceRecord = validateRecord(
-      placeRecordSchema,
-      {
-        id: createId(),
-        tripId: input.tripId,
-        dayId: input.dayId,
-        name: input.name?.trim() || DEFAULT_PLACE_NAME,
-        category: input.category ?? DEFAULT_CATEGORY,
-        latitude: input.latitude,
-        longitude: input.longitude,
-        startTime: null,
-        stayMinutes: null,
-        travelMinutes: null,
-        memo: '',
-        url: '',
-        estimatedCost: null,
-        order,
-        createdAt: now,
-        updatedAt: now,
-      },
-      'スポットの追加',
-    );
-    await db.transaction('rw', db.places, db.trips, async () => {
+    let record: PlaceRecord | undefined;
+    await db.transaction('rw', db.trips, db.days, db.places, async () => {
+      const dayRecord = await db.days.get(input.dayId);
+      if (!dayRecord) throw new Error(`日付データが見つかりません: ${input.dayId}`);
+      const day = dayFromRecord(validateRecord(tripDayRecordSchema, dayRecord, '日付データ'));
+      if (day.tripId !== input.tripId) {
+        throw new Error('スポットの旅行IDと日付データの旅行IDが一致しません');
+      }
+
+      const now = nowIso();
+      const order = await db.places.where('dayId').equals(input.dayId).count();
+      record = validateRecord(
+        placeRecordSchema,
+        {
+          id: createId(),
+          tripId: input.tripId,
+          dayId: input.dayId,
+          name: input.name?.trim() || DEFAULT_PLACE_NAME,
+          category: input.category ?? DEFAULT_CATEGORY,
+          latitude: input.latitude,
+          longitude: input.longitude,
+          startTime: null,
+          stayMinutes: null,
+          travelMinutes: null,
+          memo: '',
+          url: '',
+          estimatedCost: null,
+          order,
+          createdAt: now,
+          updatedAt: now,
+        },
+        'スポットの追加',
+      );
       await db.places.add(record);
       await touchTrip(input.tripId);
     });
+    if (!record) throw new Error('スポットの追加に失敗しました');
     return placeFromRecord(record);
   },
 
   async update(id: string, patch: PlacePatch): Promise<Place> {
-    const existing = await db.places.get(id);
-    if (!existing) throw new Error(`スポットが見つかりません: ${id}`);
-    const record: PlaceRecord = validateRecord(
-      placeRecordSchema,
-      { ...existing, ...patch, updatedAt: nowIso() },
-      'スポットの更新',
-    );
+    let record: PlaceRecord | undefined;
     await db.transaction('rw', db.places, db.trips, async () => {
+      const existing = await db.places.get(id);
+      if (!existing) throw new Error(`スポットが見つかりません: ${id}`);
+      record = validateRecord(
+        placeRecordSchema,
+        { ...existing, ...patch, updatedAt: nowIso() },
+        'スポットの更新',
+      );
       await db.places.put(record);
       await touchTrip(record.tripId);
     });
+    if (!record) throw new Error('スポットの更新に失敗しました');
     return placeFromRecord(record);
   },
 
   async remove(id: string): Promise<void> {
-    const existing = await db.places.get(id);
-    if (!existing) return;
     await db.transaction('rw', db.places, db.trips, async () => {
+      const existing = await db.places.get(id);
+      if (!existing) return;
       await db.places.delete(id);
       // Re-pack the remaining spots in the day so order stays contiguous.
       const remaining = await db.places.where('dayId').equals(existing.dayId).sortBy('order');
@@ -116,18 +127,18 @@ export const placeRepository = {
 
   /** Clone a spot directly after the original within the same day. */
   async duplicate(id: string): Promise<Place> {
-    const source = await db.places.get(id);
-    if (!source) throw new Error(`スポットが見つかりません: ${id}`);
-    const now = nowIso();
-    let created: PlaceRecord | null = null;
+    let created: PlaceRecord | undefined;
     await db.transaction('rw', db.places, db.trips, async () => {
-      const siblings = await db.places.where('dayId').equals(source.dayId).sortBy('order');
-      const insertAt = source.order + 1;
-      // Shift everything after the original down by one to make room.
-      const shifted = siblings
-        .filter((place) => place.order >= insertAt)
-        .map((place) => ({ ...place, order: place.order + 1 }));
-      if (shifted.length > 0) await db.places.bulkPut(shifted);
+      const sourceRecord = await db.places.get(id);
+      if (!sourceRecord) throw new Error(`スポットが見つかりません: ${id}`);
+      const source = validateRecord(placeRecordSchema, sourceRecord, 'スポットデータ');
+      const siblings = (await db.places.where('dayId').equals(source.dayId).sortBy('order')).map(
+        toPlaceRecord,
+      );
+      const sourceIndex = siblings.findIndex((place) => place.id === source.id);
+      if (sourceIndex === -1) throw new Error(`スポットが見つかりません: ${id}`);
+      const now = nowIso();
+      const insertAt = sourceIndex + 1;
 
       created = validateRecord(
         placeRecordSchema,
@@ -141,6 +152,11 @@ export const placeRepository = {
         },
         'スポットの複製',
       );
+      const reordered = [...siblings.slice(0, insertAt), created, ...siblings.slice(insertAt)].map(
+        (place, index) => ({ ...place, order: index }),
+      );
+      const existingUpdates = reordered.filter((place) => place.id !== created?.id);
+      if (existingUpdates.length > 0) await db.places.bulkPut(existingUpdates);
       await db.places.add(created);
       await touchTrip(source.tripId);
     });
@@ -150,11 +166,24 @@ export const placeRepository = {
 
   /** Persist a new within-day order given the ids in their desired sequence. */
   async reorderWithinDay(dayId: string, orderedIds: string[]): Promise<void> {
-    await db.transaction('rw', db.places, db.trips, async () => {
+    await db.transaction('rw', db.trips, db.days, db.places, async () => {
+      const dayRecord = await db.days.get(dayId);
+      if (!dayRecord) throw new Error(`日付データが見つかりません: ${dayId}`);
+      const day = validateRecord(tripDayRecordSchema, dayRecord, '日付データ');
       const places = await db.places.where('dayId').equals(dayId).toArray();
       const byId = new Map(places.map((place) => [place.id, place]));
+      const currentOrder = places.sort((a, b) => a.order - b.order).map((place) => place.id);
+      const seen = new Set<string>();
+      const nextOrder = [
+        ...orderedIds.filter((id) => {
+          if (!byId.has(id) || seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        }),
+        ...currentOrder.filter((id) => !seen.has(id)),
+      ];
       const updates: PlaceRecord[] = [];
-      orderedIds.forEach((id, index) => {
+      nextOrder.forEach((id, index) => {
         const place = byId.get(id);
         if (place && place.order !== index) {
           updates.push({ ...place, order: index });
@@ -162,8 +191,12 @@ export const placeRepository = {
       });
       if (updates.length > 0) {
         await db.places.bulkPut(updates);
-        await touchTrip(updates[0].tripId);
+        await touchTrip(day.tripId);
       }
     });
   },
 };
+
+function toPlaceRecord(record: PlaceRecord): PlaceRecord {
+  return validateRecord(placeRecordSchema, record, 'スポットデータ');
+}
