@@ -21,6 +21,7 @@ import { tripRepository } from '@/repositories/tripRepository';
  */
 export function ImportTripButton({ onImported }: { onImported?: (tripId: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +30,9 @@ export function ImportTripButton({ onImported }: { onImported?: (tripId: string)
     // Reset immediately so re-selecting the same file fires onChange again.
     event.target.value = '';
     if (!file) return;
+    if (busyRef.current) return;
 
+    busyRef.current = true;
     setBusy(true);
     try {
       if (file.size > MAX_BACKUP_BYTES) {
@@ -48,6 +51,7 @@ export function ImportTripButton({ onImported }: { onImported?: (tripId: string)
       if (!(err instanceof BackupError)) console.error('インポートに失敗しました', err);
       setError(message);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };

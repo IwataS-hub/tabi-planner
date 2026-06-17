@@ -83,6 +83,11 @@ describe('parseBackup', () => {
     expect(() => parseBackup(JSON.stringify(broken))).toThrow(/日付データ/);
   });
 
+  it('rejects day records that do not match the trip date range', () => {
+    const broken = buildBackup(trip, [days[0]], places);
+    expect(() => parseBackup(JSON.stringify(broken))).toThrow(/旅行期間/);
+  });
+
   it('rejects a file larger than the size limit', () => {
     const huge = 'x'.repeat(MAX_BACKUP_BYTES + 1);
     expect(() => parseBackup(huge)).toThrow(/サイズ/);

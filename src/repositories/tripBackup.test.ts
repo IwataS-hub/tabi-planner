@@ -59,12 +59,15 @@ describe('export → import round-trip', () => {
     const backup = await tripRepository.exportTrip(trip.id);
     const imported = await tripRepository.importBackup(backup);
 
+    const sourcePlaces = await placeRepository.listByTrip(trip.id);
     const importedDays = await tripRepository.listDays(imported.id);
     const importedPlaces = await placeRepository.listByTrip(imported.id);
 
     // No id is reused from the source trip/days.
     const oldDayIds = new Set(days.map((d) => d.id));
+    const oldPlaceIds = new Set(sourcePlaces.map((p) => p.id));
     expect(importedDays.every((d) => !oldDayIds.has(d.id))).toBe(true);
+    expect(importedPlaces.every((p) => !oldPlaceIds.has(p.id))).toBe(true);
     expect(importedDays.every((d) => d.tripId === imported.id)).toBe(true);
 
     // Places point at the new days, preserving the day each spot was on.
@@ -74,6 +77,39 @@ describe('export → import round-trip', () => {
     }
     expect(importedPlaces.find((p) => p.name === '松本城')!.dayId).toBe(importedDays[0].id);
     expect(importedPlaces.find((p) => p.name === '上高地')!.dayId).toBe(importedDays[1].id);
+  });
+
+  it('normalizes day order and place order within each imported day', async () => {
+    const { trip } = await seedTrip();
+    const backup = await tripRepository.exportTrip(trip.id);
+    const imported = await tripRepository.importBackup({
+      ...backup,
+      days: [
+        { ...backup.days[1], order: 20 },
+        { ...backup.days[0], order: 10 },
+      ],
+      places: [
+        { ...backup.places[1], order: 7 },
+        { ...backup.places[0], order: 3 },
+        {
+          ...backup.places[0],
+          id: 'extra-place',
+          name: '縄手通り',
+          order: 1,
+        },
+      ],
+    });
+
+    const importedDays = await tripRepository.listDays(imported.id);
+    expect(importedDays.map((day) => day.date)).toEqual(['2026-07-01', '2026-07-02']);
+    expect(importedDays.map((day) => day.order)).toEqual([0, 1]);
+
+    const firstDayPlaces = await placeRepository.listByDay(importedDays[0].id);
+    const secondDayPlaces = await placeRepository.listByDay(importedDays[1].id);
+    expect(firstDayPlaces.map((place) => place.name)).toEqual(['縄手通り', '松本城']);
+    expect(firstDayPlaces.map((place) => place.order)).toEqual([0, 1]);
+    expect(secondDayPlaces.map((place) => place.name)).toEqual(['上高地']);
+    expect(secondDayPlaces.map((place) => place.order)).toEqual([0]);
   });
 
   it('adds a suffix to avoid title collisions', async () => {

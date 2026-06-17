@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { placeRecordSchema, tripDayRecordSchema, tripRecordSchema } from '@/validation/schemas';
 import type { PlaceRecord, TripDayRecord, TripRecord } from '@/db/records';
-import { toISODate } from '@/lib/date';
+import { eachDateInRange, toISODate } from '@/lib/date';
 
 /**
  * Single-trip backup format. A backup is fully self-contained (trip + its days
@@ -123,6 +123,15 @@ export function assertReferentialIntegrity(backup: TripBackup): void {
   const dayIds = new Set(backup.days.map((day) => day.id));
   if (dayIds.size !== backup.days.length) {
     throw new BackupError('バックアップ内に日付データの重複があります。');
+  }
+  const expectedDates = eachDateInRange(backup.trip.startDate, backup.trip.endDate);
+  const actualDates = new Set(backup.days.map((day) => day.date));
+  if (
+    actualDates.size !== backup.days.length ||
+    actualDates.size !== expectedDates.length ||
+    expectedDates.some((date) => !actualDates.has(date))
+  ) {
+    throw new BackupError('日付データが旅行期間と対応していません。');
   }
   for (const day of backup.days) {
     if (day.tripId !== backup.trip.id) {
