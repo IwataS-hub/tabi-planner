@@ -3,12 +3,58 @@ import { dayFromRecord, placeFromRecord } from '@/db/mappers';
 import type { PlaceRecord } from '@/db/records';
 import { DEFAULT_CATEGORY } from '@/domain/categories';
 import type { ReverseGeocodeResult } from '@/domain/geocoding';
+import { isTravelMode, routeKey, type TravelMode } from '@/domain/routing';
 import type { Place, PlaceCategory } from '@/domain/types';
 import { createId } from '@/lib/utils';
 import { placeRecordSchema, tripDayRecordSchema } from '@/validation/schemas';
 import { nowIso, validateRecord } from './shared';
 
 export const DEFAULT_PLACE_NAME = '名称未設定';
+
+/** The record fields that make up an auto travel estimate, all cleared to null. */
+function clearedAutoTravel() {
+  return {
+    travelMode: null,
+    travelDistanceMeters: null,
+    travelEstimateSource: null,
+    travelToPlaceId: null,
+    travelRouteKey: null,
+    travelCalculatedAt: null,
+  } as const;
+}
+
+/**
+ * Within a transaction, invalidate AUTO travel estimates in a day that no longer
+ * match their segment: the targeted next place changed (reorder/delete/
+ * duplicate) or the from/to coordinates changed (route key mismatch). Only
+ * estimates whose source is `auto` are touched — a manual `travelMinutes` is
+ * never cleared here. The auto value (including `travelMinutes`) is wiped so a
+ * stale time can never be shown for a different segment.
+ */
+async function reconcileAutoTravelInDay(dayId: string): Promise<void> {
+  const places = await db.places.where('dayId').equals(dayId).sortBy('order');
+  const updates: PlaceRecord[] = [];
+  for (let i = 0; i < places.length; i += 1) {
+    const place = places[i];
+    if (place.travelEstimateSource !== 'auto') continue;
+    const next = places[i + 1];
+    const mode = place.travelMode;
+    const stillValid =
+      next != null &&
+      place.travelToPlaceId === next.id &&
+      isTravelMode(mode) &&
+      place.travelRouteKey ===
+        routeKey(
+          { latitude: place.latitude, longitude: place.longitude },
+          { latitude: next.latitude, longitude: next.longitude },
+          mode,
+        );
+    if (!stillValid) {
+      updates.push({ ...place, travelMinutes: null, ...clearedAutoTravel(), updatedAt: nowIso() });
+    }
+  }
+  if (updates.length > 0) await db.places.bulkPut(updates);
+}
 
 /**
  * Build the patch to apply a reverse-geocoding result to an existing place,
@@ -119,6 +165,7 @@ export const placeRepository = {
         'スポットの追加',
       );
       await db.places.add(record);
+      await reconcileAutoTravelInDay(input.dayId);
       await touchTrip(input.tripId);
     });
     if (!record) throw new Error('スポットの追加に失敗しました');
@@ -130,12 +177,25 @@ export const placeRepository = {
     await db.transaction('rw', db.places, db.trips, async () => {
       const existing = await db.places.get(id);
       if (!existing) throw new Error(`スポットが見つかりません: ${id}`);
-      record = validateRecord(
-        placeRecordSchema,
-        { ...existing, ...patch, updatedAt: nowIso() },
-        'スポットの更新',
-      );
+      // Editing travelMinutes is a manual override: detach from any auto
+      // estimate so the two are never confused.
+      const manualTravelEdit = 'travelMinutes' in patch;
+      const coordsChanged =
+        ('latitude' in patch && patch.latitude !== existing.latitude) ||
+        ('longitude' in patch && patch.longitude !== existing.longitude);
+      const merged = { ...existing, ...patch, updatedAt: nowIso() };
+      const next = manualTravelEdit
+        ? {
+            ...merged,
+            ...clearedAutoTravel(),
+            travelEstimateSource: merged.travelMinutes == null ? null : 'manual',
+          }
+        : merged;
+      record = validateRecord(placeRecordSchema, next, 'スポットの更新');
       await db.places.put(record);
+      // A coordinate change invalidates this leg and the preceding leg's auto
+      // estimate (their route key no longer matches the current coordinates).
+      if (coordsChanged) await reconcileAutoTravelInDay(record.dayId);
       await touchTrip(record.tripId);
     });
     if (!record) throw new Error('スポットの更新に失敗しました');
@@ -150,6 +210,9 @@ export const placeRepository = {
       // Re-pack the remaining spots in the day so order stays contiguous.
       const remaining = await db.places.where('dayId').equals(existing.dayId).sortBy('order');
       await db.places.bulkPut(remaining.map((place, index) => ({ ...place, order: index })));
+      // The spot before the removed one now has a new neighbour — drop any
+      // auto estimate that no longer matches.
+      await reconcileAutoTravelInDay(existing.dayId);
       await touchTrip(existing.tripId);
     });
   },
@@ -175,6 +238,9 @@ export const placeRepository = {
           ...source,
           id: createId(),
           name: `${source.name}のコピー`,
+          // A clone is a new segment: never inherit the original's estimate.
+          travelMinutes: null,
+          ...clearedAutoTravel(),
           order: insertAt,
           createdAt: now,
           updatedAt: now,
@@ -187,6 +253,8 @@ export const placeRepository = {
       const existingUpdates = reordered.filter((place) => place.id !== created?.id);
       if (existingUpdates.length > 0) await db.places.bulkPut(existingUpdates);
       await db.places.add(created);
+      // The original now points at the clone — invalidate its stale estimate.
+      await reconcileAutoTravelInDay(source.dayId);
       await touchTrip(source.tripId);
     });
     if (!created) throw new Error('スポットの複製に失敗しました');
@@ -220,9 +288,73 @@ export const placeRepository = {
       });
       if (updates.length > 0) {
         await db.places.bulkPut(updates);
+        // Adjacency changed — drop auto estimates that no longer match.
+        await reconcileAutoTravelInDay(dayId);
         await touchTrip(day.tripId);
       }
     });
+  },
+
+  /**
+   * Persist an auto route estimate on the departure place. Re-verifies, inside
+   * the transaction, that `fromPlaceId`'s current next spot is still
+   * `toPlaceId` and that the coordinates still match `expectedRouteKey`; if a
+   * reorder/delete/move happened while the request was in flight, nothing is
+   * saved and `null` is returned (a stale result is never applied).
+   */
+  async saveRouteEstimate(input: {
+    fromPlaceId: string;
+    toPlaceId: string;
+    mode: TravelMode;
+    minutes: number;
+    distanceMeters: number;
+    expectedRouteKey: string;
+    calculatedAt: string;
+  }): Promise<Place | null> {
+    let saved: PlaceRecord | undefined;
+    let stale = false;
+    await db.transaction('rw', db.places, db.trips, async () => {
+      const from = await db.places.get(input.fromPlaceId);
+      if (!from) {
+        stale = true;
+        return;
+      }
+      const siblings = await db.places.where('dayId').equals(from.dayId).sortBy('order');
+      const index = siblings.findIndex((place) => place.id === from.id);
+      const next = siblings[index + 1];
+      if (!next || next.id !== input.toPlaceId) {
+        stale = true;
+        return;
+      }
+      const currentKey = routeKey(
+        { latitude: from.latitude, longitude: from.longitude },
+        { latitude: next.latitude, longitude: next.longitude },
+        input.mode,
+      );
+      if (currentKey !== input.expectedRouteKey) {
+        stale = true;
+        return;
+      }
+      saved = validateRecord(
+        placeRecordSchema,
+        {
+          ...from,
+          travelMinutes: input.minutes,
+          travelMode: input.mode,
+          travelDistanceMeters: input.distanceMeters,
+          travelEstimateSource: 'auto',
+          travelToPlaceId: input.toPlaceId,
+          travelRouteKey: input.expectedRouteKey,
+          travelCalculatedAt: input.calculatedAt,
+          updatedAt: nowIso(),
+        },
+        'ルート結果の保存',
+      );
+      await db.places.put(saved);
+      await touchTrip(saved.tripId);
+    });
+    if (stale || !saved) return null;
+    return placeFromRecord(saved);
   },
 };
 

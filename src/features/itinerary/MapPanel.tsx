@@ -15,6 +15,8 @@ interface MapPanelProps {
   onMapClick: (latlng: LatLng) => void;
   onFitAll: () => void;
   onCenterChange?: (center: LatLng) => void;
+  /** Real road/path shape of the selected leg (in-memory only), or null. */
+  routeGeometry?: LatLng[] | null;
 }
 
 /** Map plus its toolbar (legend, fit-all). Controls sit above the map surface
@@ -30,6 +32,7 @@ export function MapPanel({
   onMapClick,
   onFitAll,
   onCenterChange,
+  routeGeometry,
 }: MapPanelProps) {
   return (
     <div className="flex h-full flex-col">
@@ -55,6 +58,7 @@ export function MapPanel({
           flyToCoord={flyToCoord}
           flyCoordNonce={flyCoordNonce}
           onCenterChange={onCenterChange}
+          routeGeometry={routeGeometry}
         />
       </div>
 

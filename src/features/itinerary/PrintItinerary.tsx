@@ -1,8 +1,21 @@
 import { getCategoryMeta } from '@/domain/categories';
+import { formatDistanceMeters, TRAVEL_MODE_LABELS } from '@/domain/routing';
 import { summarizeDay } from '@/domain/summary';
 import type { Place, Trip, TripDay } from '@/domain/types';
 import { dayCount, formatDuration, formatJaDate, formatJaDateRange, formatYen } from '@/lib/date';
 import { APP } from '@/config/app';
+
+/** Print-friendly "next leg" text: mode + time (+ distance for auto). */
+function travelText(place: Place): string {
+  if (place.travelMinutes == null) return '—';
+  const isAuto = place.travelEstimateSource === 'auto';
+  const prefix = isAuto && place.travelMode ? `${TRAVEL_MODE_LABELS[place.travelMode]} ` : '';
+  const distance =
+    isAuto && place.travelDistanceMeters != null
+      ? `・${formatDistanceMeters(place.travelDistanceMeters)}`
+      : '';
+  return `${prefix}${formatDuration(place.travelMinutes)}${distance}`;
+}
 
 interface PrintItineraryProps {
   trip: Trip;
@@ -60,6 +73,7 @@ export function PrintItinerary({ trip, days, places }: PrintItineraryProps) {
               <ol className="mt-2 space-y-2">
                 {dayPlaces.map((place, placeIndex) => {
                   const meta = getCategoryMeta(place.category);
+                  const isLast = placeIndex === dayPlaces.length - 1;
                   return (
                     <li
                       key={place.id}
@@ -76,10 +90,9 @@ export function PrintItinerary({ trip, days, places }: PrintItineraryProps) {
                         </span>
                       </div>
                       <div className="mt-1 text-[11px] text-neutral-700">
-                        滞在: {place.stayMinutes != null ? formatDuration(place.stayMinutes) : '—'}{' '}
-                        / 次への移動:{' '}
-                        {place.travelMinutes != null ? formatDuration(place.travelMinutes) : '—'} /
-                        予算: {place.estimatedCost != null ? formatYen(place.estimatedCost) : '—'}
+                        滞在: {place.stayMinutes != null ? formatDuration(place.stayMinutes) : '—'}
+                        {!isLast ? <> / 次への移動: {travelText(place)}</> : null} / 予算:{' '}
+                        {place.estimatedCost != null ? formatYen(place.estimatedCost) : '—'}
                       </div>
                       {place.memo ? (
                         <p className="mt-1 text-[11px] whitespace-pre-wrap">メモ: {place.memo}</p>

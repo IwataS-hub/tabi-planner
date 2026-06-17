@@ -6,7 +6,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorView, LoadingView } from '@/components/StateViews';
 import { AppHeader } from '@/components/AppHeader';
 import type { BiasCenter, GeoPlace } from '@/domain/geocoding';
-import type { LatLng } from '@/domain/types';
+import {
+  routeKey,
+  secondsToTravelMinutes,
+  type RouteEstimate,
+  type TravelMode,
+} from '@/domain/routing';
+import type { LatLng, Place } from '@/domain/types';
 import { summarizeDay } from '@/domain/summary';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
@@ -17,6 +23,7 @@ import {
   type PlacePatch,
 } from '@/repositories/placeRepository';
 import { getGeocodingService } from '@/services/geocoding/geocodingService';
+import { getRoutingService } from '@/services/routing/routingService';
 import { ItineraryHeader } from './ItineraryHeader';
 import { DayTabs } from './DayTabs';
 import { DaySummaryBar } from './DaySummaryBar';
@@ -44,6 +51,13 @@ export function ItineraryPage() {
   // Resolved once; null when no API key is configured (search stays disabled,
   // manual map-click adds keep working).
   const geocodingService = useMemo(() => getGeocodingService(), []);
+  const routingService = useMemo(() => getRoutingService(), []);
+
+  // Currently highlighted leg (fromPlace id) and the in-session route shapes,
+  // keyed by routeKey. Geometry is NEVER persisted: it lives only here and in
+  // the routing cache, and is gone after a reload (saved time/distance remain).
+  const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
+  const [routeGeometries, setRouteGeometries] = useState<Map<string, LatLng[]>>(() => new Map());
   // Current map center, kept in a ref so it can bias searches without causing
   // re-renders on every pan.
   const mapCenterRef = useRef<LatLng | null>(null);
@@ -75,7 +89,12 @@ export function ItineraryPage() {
   const handleSelectDay = (dayId: string) => {
     setChosenDayId(dayId);
     setSelectedPlaceId(null);
+    setSelectedLegId(null);
   };
+
+  const handleSelectLeg = useCallback((fromPlaceId: string) => {
+    setSelectedLegId(fromPlaceId);
+  }, []);
 
   const placesForDay = useMemo(
     () => placeList.filter((place) => place.dayId === selectedDayId),
@@ -191,6 +210,45 @@ export function ItineraryPage() {
 
   const handleFocusOnMap = (id: string) => selectPlace(id);
 
+  /**
+   * Persist a freshly computed leg estimate and remember its route shape for
+   * the map (in memory only). The repository re-checks segment identity, so a
+   * result that arrived after a reorder/delete is simply dropped.
+   */
+  const handleLegResult = useCallback(
+    (fromPlace: Place, toPlace: Place, mode: TravelMode, estimate: RouteEstimate) => {
+      const key = routeKey(
+        { latitude: fromPlace.latitude, longitude: fromPlace.longitude },
+        { latitude: toPlace.latitude, longitude: toPlace.longitude },
+        mode,
+      );
+      setRouteGeometries((prev) => new Map(prev).set(key, estimate.geometry));
+      setSelectedLegId(fromPlace.id);
+      void track(() =>
+        placeRepository.saveRouteEstimate({
+          fromPlaceId: fromPlace.id,
+          toPlaceId: toPlace.id,
+          mode,
+          minutes: secondsToTravelMinutes(estimate.timeSeconds),
+          distanceMeters: Math.round(estimate.distanceMeters),
+          expectedRouteKey: key,
+          calculatedAt: new Date().toISOString(),
+        }),
+      );
+    },
+    [track],
+  );
+
+  // The real-route shape for the selected leg, if it was computed this session.
+  // After a reload there is no geometry (only saved time/distance), so the map
+  // falls back to the straight itinerary line.
+  const activeRouteGeometry = useMemo(() => {
+    if (!selectedLegId) return null;
+    const from = placesForDay.find((place) => place.id === selectedLegId);
+    if (!from || !from.travelRouteKey) return null;
+    return routeGeometries.get(from.travelRouteKey) ?? null;
+  }, [selectedLegId, placesForDay, routeGeometries]);
+
   // --- loading / error / not found ---------------------------------------
   if (trip.status === 'loading' || days.status === 'loading') {
     return (
@@ -238,6 +296,10 @@ export function ItineraryPage() {
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
         onFocusOnMap={handleFocusOnMap}
+        routingService={routingService}
+        selectedLegId={selectedLegId}
+        onSelectLeg={handleSelectLeg}
+        onLegResult={handleLegResult}
       />
     </div>
   );
@@ -254,6 +316,7 @@ export function ItineraryPage() {
       onMapClick={handleMapClick}
       onFitAll={() => setFitNonce((value) => value + 1)}
       onCenterChange={handleCenterChange}
+      routeGeometry={activeRouteGeometry}
     />
   );
 

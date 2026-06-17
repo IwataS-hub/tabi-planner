@@ -275,6 +275,7 @@ export const tripRepository = {
     const now = nowIso();
     const newTripId = createId();
     const dayIdMap = new Map<string, string>();
+    const placeIdMap = new Map<string, string>();
 
     let savedTrip: TripRecord | undefined;
     await db.transaction('rw', db.trips, db.days, db.places, async () => {
@@ -320,20 +321,45 @@ export const tripRepository = {
           '日付データの読み込み',
         );
       });
+      // Pre-generate every new place id so a leg's travelToPlaceId can be
+      // rewired to the new id (the original id must never survive an import).
+      for (const place of backup.places) placeIdMap.set(place.id, createId());
+
       const newPlaces: PlaceRecord[] = orderedDays.flatMap((day) =>
         (placesByDay.get(day.id) ?? []).sort(comparePlacesWithinDay).map((place, index) => {
           const dayId = dayIdMap.get(place.dayId);
           if (!dayId) {
             throw new Error(`スポットが参照する日付データが見つかりません: ${place.id}`);
           }
+          const newId = placeIdMap.get(place.id) ?? createId();
+          // Rewire the auto estimate's target to the new id. If the target is
+          // missing (corrupt/partial backup), safely drop the auto estimate
+          // rather than reject the whole import; a manual time is preserved.
+          const mappedTarget = place.travelToPlaceId
+            ? (placeIdMap.get(place.travelToPlaceId) ?? null)
+            : null;
+          const travelFields = mappedTarget
+            ? { travelToPlaceId: mappedTarget }
+            : place.travelEstimateSource === 'auto'
+              ? {
+                  travelMinutes: null,
+                  travelMode: null,
+                  travelDistanceMeters: null,
+                  travelEstimateSource: null,
+                  travelToPlaceId: null,
+                  travelRouteKey: null,
+                  travelCalculatedAt: null,
+                }
+              : { travelToPlaceId: null };
           return validateRecord(
             placeRecordSchema,
             {
               ...place,
-              id: createId(),
+              id: newId,
               tripId: newTripId,
               dayId,
               order: index,
+              ...travelFields,
               createdAt: now,
               updatedAt: now,
             },

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PLACE_ADDRESS_MAX_LENGTH, PLACE_CATEGORIES } from '@/domain/types';
+import { TRAVEL_MODES } from '@/domain/routing';
 import { isValidISODate, isValidTime } from '@/lib/date';
 import { isHttpUrl } from '@/lib/utils';
 
@@ -51,6 +52,43 @@ const optionalAddress = z
       .nullable(),
   );
 
+/**
+ * Optional travel-estimate fields (Phase 2.2). All are nullish so records and
+ * JSON backups written before they existed still load; absent/blank values
+ * normalise to `null`.
+ */
+const nullableTrimmedString = z
+  .string()
+  .nullish()
+  .transform((value) => {
+    const trimmed = (value ?? '').trim();
+    return trimmed === '' ? null : trimmed;
+  })
+  .pipe(z.string().nullable());
+
+const travelModeField = z
+  .enum(TRAVEL_MODES)
+  .nullish()
+  .transform((value) => value ?? null);
+
+const travelEstimateSourceField = z
+  .enum(['auto', 'manual'])
+  .nullish()
+  .transform((value) => value ?? null);
+
+const travelDistanceField = z
+  .number()
+  .int('整数で入力してください')
+  .min(0, '0以上で入力してください')
+  .nullish()
+  .transform((value) => value ?? null);
+
+const nullableIsoTimestamp = z
+  .string()
+  .refine((value) => !Number.isNaN(Date.parse(value)), 'タイムスタンプが不正です')
+  .nullish()
+  .transform((value) => value ?? null);
+
 export const placeCategorySchema = z.enum(PLACE_CATEGORIES);
 
 // ---------------------------------------------------------------------------
@@ -98,6 +136,12 @@ export const placeRecordSchema = z.object({
   memo: z.string().max(2000, 'メモは2000文字以内で入力してください'),
   url: optionalUrl,
   estimatedCost: nonNegativeInt.max(100_000_000, '金額が大きすぎます').nullable(),
+  travelMode: travelModeField,
+  travelDistanceMeters: travelDistanceField,
+  travelEstimateSource: travelEstimateSourceField,
+  travelToPlaceId: nullableTrimmedString,
+  travelRouteKey: nullableTrimmedString,
+  travelCalculatedAt: nullableIsoTimestamp,
   order: nonNegativeInt,
   createdAt: isoTimestamp,
   updatedAt: isoTimestamp,

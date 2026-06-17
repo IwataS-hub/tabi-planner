@@ -2,9 +2,26 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, TabioriDatabase } from '@/db/database';
 import { placeToRecord } from '@/db/mappers';
 import type { PlaceRecord } from '@/db/records';
-import type { Place } from '@/domain/types';
+import { routeKey } from '@/domain/routing';
+import type { LatLng, Place } from '@/domain/types';
 import { DEFAULT_PLACE_NAME, placeRepository, reverseGeocodePatch } from './placeRepository';
 import { tripRepository } from './tripRepository';
+
+function latLng(place: Place): LatLng {
+  return { latitude: place.latitude, longitude: place.longitude };
+}
+
+async function saveWalkLeg(from: Place, to: Place, minutes = 18, distance = 1300) {
+  return placeRepository.saveRouteEstimate({
+    fromPlaceId: from.id,
+    toPlaceId: to.id,
+    mode: 'walk',
+    minutes,
+    distanceMeters: distance,
+    expectedRouteKey: routeKey(latLng(from), latLng(to), 'walk'),
+    calculatedAt: '2026-06-16T00:00:00.000Z',
+  });
+}
 
 async function seed() {
   const trip = await tripRepository.create({
@@ -264,6 +281,12 @@ describe('reverseGeocodePatch', () => {
     latitude: 35,
     longitude: 135,
     address: null,
+    travelMode: null,
+    travelDistanceMeters: null,
+    travelEstimateSource: null,
+    travelToPlaceId: null,
+    travelRouteKey: null,
+    travelCalculatedAt: null,
     startTime: null,
     stayMinutes: null,
     travelMinutes: null,
@@ -301,6 +324,125 @@ describe('reverseGeocodePatch', () => {
     const edited = { ...base, name: '編集済み', address: '既存住所' };
     const patch = reverseGeocodePatch(edited, { name: '清水寺', address: '京都市東山区' });
     expect(patch).toBeNull();
+  });
+});
+
+describe('route estimates (Phase 2.2)', () => {
+  it('saves an auto estimate on the departure place', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+
+    const saved = await saveWalkLeg(a, b);
+    expect(saved).not.toBeNull();
+    expect(saved!.travelMinutes).toBe(18);
+    expect(saved!.travelMode).toBe('walk');
+    expect(saved!.travelDistanceMeters).toBe(1300);
+    expect(saved!.travelEstimateSource).toBe('auto');
+    expect(saved!.travelToPlaceId).toBe(b.id);
+    expect(saved!.travelRouteKey).toBe(routeKey(latLng(a), latLng(b), 'walk'));
+  });
+
+  it('does not save a stale result when the next place changed', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    // B is A's real next neighbour (kept in the DB, not referenced directly).
+    await placeRepository.add({ tripId, dayId, ...coords(1) });
+    const c = await placeRepository.add({ tripId, dayId, ...coords(2) });
+
+    // Pretend the response targeted C while A's real next is B.
+    const result = await placeRepository.saveRouteEstimate({
+      fromPlaceId: a.id,
+      toPlaceId: c.id,
+      mode: 'walk',
+      minutes: 30,
+      distanceMeters: 2000,
+      expectedRouteKey: routeKey(latLng(a), latLng(c), 'walk'),
+      calculatedAt: '2026-06-16T00:00:00.000Z',
+    });
+    expect(result).toBeNull();
+    const reloaded = await placeRepository.get(a.id);
+    expect(reloaded!.travelMinutes).toBeNull();
+  });
+
+  it('does not revive a place deleted before the result arrives', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await placeRepository.remove(a.id);
+
+    const result = await saveWalkLeg(a, b);
+    expect(result).toBeNull();
+    expect(await placeRepository.listByDay(dayId)).toHaveLength(1);
+  });
+
+  it('marks travelMinutes manual and clears auto metadata on a manual edit', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await saveWalkLeg(a, b);
+
+    const edited = await placeRepository.update(a.id, { travelMinutes: 25 });
+    expect(edited.travelMinutes).toBe(25);
+    expect(edited.travelEstimateSource).toBe('manual');
+    expect(edited.travelMode).toBeNull();
+    expect(edited.travelDistanceMeters).toBeNull();
+    expect(edited.travelToPlaceId).toBeNull();
+    expect(edited.travelRouteKey).toBeNull();
+  });
+
+  it('invalidates an auto estimate after a reorder changes the next place', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    const c = await placeRepository.add({ tripId, dayId, ...coords(2) });
+    await saveWalkLeg(a, b);
+
+    await placeRepository.reorderWithinDay(dayId, [a.id, c.id, b.id]);
+    const reloaded = await placeRepository.get(a.id);
+    expect(reloaded!.travelEstimateSource).toBeNull();
+    expect(reloaded!.travelMinutes).toBeNull();
+  });
+
+  it('invalidates the preceding auto estimate when the next place is deleted', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await placeRepository.add({ tripId, dayId, ...coords(2) });
+    await saveWalkLeg(a, b);
+
+    await placeRepository.remove(b.id);
+    const reloaded = await placeRepository.get(a.id);
+    expect(reloaded!.travelEstimateSource).toBeNull();
+    expect(reloaded!.travelMinutes).toBeNull();
+  });
+
+  it('does not let a clone inherit the auto estimate', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await saveWalkLeg(a, b);
+
+    const copy = await placeRepository.duplicate(a.id);
+    expect(copy.travelEstimateSource).toBeNull();
+    expect(copy.travelMinutes).toBeNull();
+    expect(copy.travelMode).toBeNull();
+    // The original now points at the clone, so its estimate is invalidated too.
+    const original = await placeRepository.get(a.id);
+    expect(original!.travelEstimateSource).toBeNull();
+  });
+
+  it('keeps a manual travelMinutes through a reorder', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    const c = await placeRepository.add({ tripId, dayId, ...coords(2) });
+    await placeRepository.update(a.id, { travelMinutes: 30 });
+
+    await placeRepository.reorderWithinDay(dayId, [a.id, c.id, b.id]);
+    const reloaded = await placeRepository.get(a.id);
+    expect(reloaded!.travelMinutes).toBe(30);
+    expect(reloaded!.travelEstimateSource).toBe('manual');
   });
 });
 

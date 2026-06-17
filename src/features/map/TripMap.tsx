@@ -22,6 +22,8 @@ interface TripMapProps {
   flyCoordNonce?: number;
   /** Reports the current map center (used as a search bias). */
   onCenterChange?: (center: LatLng) => void;
+  /** Real road/path shape of the selected leg to highlight, or null. */
+  routeGeometry?: LatLng[] | null;
 }
 
 function MapClickHandler({ onMapClick }: { onMapClick: (latlng: LatLng) => void }) {
@@ -114,11 +116,17 @@ export function TripMap({
   flyToCoord,
   flyCoordNonce,
   onCenterChange,
+  routeGeometry,
 }: TripMapProps) {
   const line = useMemo<[number, number][]>(
     () => places.map((place) => [place.latitude, place.longitude]),
     [places],
   );
+  const highlight = useMemo<[number, number][]>(
+    () => (routeGeometry ?? []).map((point) => [point.latitude, point.longitude]),
+    [routeGeometry],
+  );
+  const hasHighlight = highlight.length >= 2;
 
   return (
     <MapContainer
@@ -136,8 +144,26 @@ export function TripMap({
         maxNativeZoom={18}
       />
 
+      {/* Itinerary order as a simple straight line. Dimmed (and dashed) while a
+          real route is highlighted so the two never read as one shape. */}
       {line.length >= 2 ? (
-        <Polyline positions={line} pathOptions={{ color: '#b94a32', weight: 3, opacity: 0.7 }} />
+        <Polyline
+          positions={line}
+          pathOptions={{
+            color: '#b94a32',
+            weight: 3,
+            opacity: hasHighlight ? 0.3 : 0.7,
+            dashArray: hasHighlight ? '4 6' : undefined,
+          }}
+        />
+      ) : null}
+
+      {/* Selected leg's real road/path route: distinct colour, thicker, solid. */}
+      {hasHighlight ? (
+        <Polyline
+          positions={highlight}
+          pathOptions={{ color: '#2f6f8f', weight: 6, opacity: 0.95 }}
+        />
       ) : null}
 
       {places.map((place, index) => (

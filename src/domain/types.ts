@@ -9,6 +9,8 @@
  *   so they round-trip cleanly through IndexedDB and Zod.
  */
 
+import type { TravelEstimateSource, TravelMode } from './routing';
+
 export const PLACE_CATEGORIES = [
   'sightseeing',
   'food',
@@ -75,6 +77,19 @@ export interface Place {
   url: string;
   /** Estimated cost in JPY, or null. */
   estimatedCost: number | null;
+  // --- Per-leg travel estimate to the NEXT spot (Phase 2.2) ----------------
+  /** Travel mode of the current estimate, or null. */
+  travelMode: TravelMode | null;
+  /** Auto-estimated distance to the next spot in metres, or null. */
+  travelDistanceMeters: number | null;
+  /** Whether `travelMinutes` came from auto routing or manual entry, or null. */
+  travelEstimateSource: TravelEstimateSource | null;
+  /** The next Place id this estimate targets (segment identity), or null. */
+  travelToPlaceId: string | null;
+  /** Stable route key (coords + mode) the estimate was computed for, or null. */
+  travelRouteKey: string | null;
+  /** ISO timestamp the estimate was computed, or null. */
+  travelCalculatedAt: string | null;
   /** Zero-based position within its day. */
   order: number;
   createdAt: string;
