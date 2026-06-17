@@ -35,6 +35,14 @@ function buildDayRecords(tripId: string, startDate: string, endDate: string): Tr
   }));
 }
 
+function compareDaysByDate(a: TripDayRecord, b: TripDayRecord): number {
+  return a.date.localeCompare(b.date) || a.order - b.order || a.id.localeCompare(b.id);
+}
+
+function comparePlacesWithinDay(a: PlaceRecord, b: PlaceRecord): number {
+  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+}
+
 /**
  * Reconcile a trip's day rows with a (possibly new) date range. Days are derived
  * from the range: existing dates are kept (preserving their id and places), new
@@ -240,20 +248,18 @@ export const tripRepository = {
     const tripRecord = await db.trips.get(id);
     if (!tripRecord) throw new Error(`旅行が見つかりません: ${id}`);
     const trip = validateRecord(tripRecordSchema, tripRecord, '旅行データ');
-    const days = (await db.days.where('tripId').equals(id).sortBy('order')).map((day) =>
-      validateRecord(tripDayRecordSchema, day, '日付データ'),
-    );
-    // Order places deterministically by day (in day order) then within-day
-    // order. A trip-wide sort by `order` alone is ambiguous because `order` is
-    // per-day, so several places share the same value; that left export order
-    // dependent on the storage engine's tie-break. A stable order keeps backups
-    // diffable and imports predictable.
+    const days = (await db.days.where('tripId').equals(id).toArray())
+      .map((day) => validateRecord(tripDayRecordSchema, day, '日付データ'))
+      .sort(compareDaysByDate);
+    // Order places deterministically by day date, then within-day order. A
+    // trip-wide sort by `order` alone is ambiguous because `order` is per-day,
+    // so several places share the same value; tie-breaks keep backups diffable.
     const dayOrder = new Map(days.map((day, index) => [day.id, index]));
     const places = (await db.places.where('tripId').equals(id).toArray())
       .map((place) => validateRecord(placeRecordSchema, place, 'スポットデータ'))
       .sort((a, b) => {
         const dayDelta = (dayOrder.get(a.dayId) ?? Infinity) - (dayOrder.get(b.dayId) ?? Infinity);
-        return dayDelta !== 0 ? dayDelta : a.order - b.order;
+        return dayDelta !== 0 ? dayDelta : comparePlacesWithinDay(a, b);
       });
     return buildBackup(trip, days, places);
   },
@@ -297,9 +303,7 @@ export const tripRepository = {
         },
         '旅行の読み込み',
       );
-      const orderedDays = [...backup.days].sort(
-        (a, b) => a.date.localeCompare(b.date) || a.order - b.order,
-      );
+      const orderedDays = [...backup.days].sort(compareDaysByDate);
       const placesByDay = new Map<string, PlaceRecord[]>();
       for (const place of backup.places) {
         const dayPlaces = placesByDay.get(place.dayId) ?? [];
@@ -317,27 +321,25 @@ export const tripRepository = {
         );
       });
       const newPlaces: PlaceRecord[] = orderedDays.flatMap((day) =>
-        (placesByDay.get(day.id) ?? [])
-          .sort((a, b) => a.order - b.order)
-          .map((place, index) => {
-            const dayId = dayIdMap.get(place.dayId);
-            if (!dayId) {
-              throw new Error(`スポットが参照する日付データが見つかりません: ${place.id}`);
-            }
-            return validateRecord(
-              placeRecordSchema,
-              {
-                ...place,
-                id: createId(),
-                tripId: newTripId,
-                dayId,
-                order: index,
-                createdAt: now,
-                updatedAt: now,
-              },
-              'スポットの読み込み',
-            );
-          }),
+        (placesByDay.get(day.id) ?? []).sort(comparePlacesWithinDay).map((place, index) => {
+          const dayId = dayIdMap.get(place.dayId);
+          if (!dayId) {
+            throw new Error(`スポットが参照する日付データが見つかりません: ${place.id}`);
+          }
+          return validateRecord(
+            placeRecordSchema,
+            {
+              ...place,
+              id: createId(),
+              tripId: newTripId,
+              dayId,
+              order: index,
+              createdAt: now,
+              updatedAt: now,
+            },
+            'スポットの読み込み',
+          );
+        }),
       );
 
       await db.trips.add(newTrip);

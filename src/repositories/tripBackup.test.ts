@@ -112,6 +112,48 @@ describe('export → import round-trip', () => {
     expect(secondDayPlaces.map((place) => place.order)).toEqual([0]);
   });
 
+  it('exports days by date and places by within-day order with stable tie-breaks', async () => {
+    const { trip, days } = await seedTrip();
+    const firstDayPlaces = await db.places.where('dayId').equals(days[0].id).toArray();
+    const secondDayPlaces = await db.places.where('dayId').equals(days[1].id).toArray();
+    const firstDayPlace = firstDayPlaces[0];
+    const secondDayPlace = secondDayPlaces[0];
+    if (!firstDayPlace || !secondDayPlace) throw new Error('seed failed');
+
+    await db.days.bulkPut([
+      { ...days[0], order: 10 },
+      { ...days[1], order: 0 },
+    ]);
+    await db.places.bulkPut([
+      {
+        ...firstDayPlace,
+        name: '松本城',
+        order: 0,
+        createdAt: '2026-07-01T10:00:00.000Z',
+      },
+      {
+        ...firstDayPlace,
+        id: 'same-order-earlier',
+        name: '縄手通り',
+        order: 0,
+        createdAt: '2026-07-01T09:00:00.000Z',
+      },
+      {
+        ...secondDayPlace,
+        name: '上高地',
+        order: 0,
+        createdAt: '2026-07-02T09:00:00.000Z',
+      },
+    ]);
+
+    const first = await tripRepository.exportTrip(trip.id);
+    const second = await tripRepository.exportTrip(trip.id);
+
+    expect(first.days.map((day) => day.date)).toEqual(['2026-07-01', '2026-07-02']);
+    expect(first.places.map((place) => place.name)).toEqual(['縄手通り', '松本城', '上高地']);
+    expect(second.places.map((place) => place.id)).toEqual(first.places.map((place) => place.id));
+  });
+
   it('adds a suffix to avoid title collisions', async () => {
     const { trip } = await seedTrip();
     const backup = await tripRepository.exportTrip(trip.id);
