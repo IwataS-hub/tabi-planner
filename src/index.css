@@ -142,3 +142,26 @@
   background: transparent;
   border: 0;
 }
+
+/*
+  Print / PDF: the interactive app (`.print:hidden`) is hidden and the
+  print-only itinerary (`hidden print:block`) is shown. Here we set the page
+  geometry and remove any remaining on-screen chrome (e.g. toasts).
+*/
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+}

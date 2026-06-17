@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, Pencil, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Trip } from '@/domain/types';
 import { dayCount, formatJaDateRange } from '@/lib/date';
@@ -26,6 +26,15 @@ export function ItineraryHeader({ trip }: { trip: Trip }) {
         </div>
 
         <SaveStatusBadge />
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="印刷／PDFに保存"
+          onClick={() => window.print()}
+        >
+          <Printer aria-hidden />
+        </Button>
 
         <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
           <Link to={`/trips/${trip.id}/edit`}>
