@@ -35,6 +35,11 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Public, origin-restricted Geoapify key. Set as a repository secret
+          # named GEOAPIFY_API_KEY. If unset, the app still builds and deploys;
+          # search is simply disabled until a key is provided.
+          VITE_GEOAPIFY_API_KEY: ${{ secrets.GEOAPIFY_API_KEY }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

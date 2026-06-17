@@ -2,12 +2,30 @@ import { db } from '@/db/database';
 import { dayFromRecord, placeFromRecord } from '@/db/mappers';
 import type { PlaceRecord } from '@/db/records';
 import { DEFAULT_CATEGORY } from '@/domain/categories';
+import type { ReverseGeocodeResult } from '@/domain/geocoding';
 import type { Place, PlaceCategory } from '@/domain/types';
 import { createId } from '@/lib/utils';
 import { placeRecordSchema, tripDayRecordSchema } from '@/validation/schemas';
 import { nowIso, validateRecord } from './shared';
 
 export const DEFAULT_PLACE_NAME = '名称未設定';
+
+/**
+ * Build the patch to apply a reverse-geocoding result to an existing place,
+ * or `null` when nothing should change. Pure so it can be unit-tested.
+ *
+ * Safety rules (background result must never clobber the user):
+ * - Address is filled only when the place has none yet.
+ * - Name is filled only when it is still the default placeholder — a name the
+ *   user has already edited is left untouched.
+ */
+export function reverseGeocodePatch(place: Place, result: ReverseGeocodeResult): PlacePatch | null {
+  const patch: PlacePatch = {};
+  const hasAddress = place.address != null && place.address.trim() !== '';
+  if (result.address && !hasAddress) patch.address = result.address;
+  if (result.name && place.name === DEFAULT_PLACE_NAME) patch.name = result.name;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
 
 export interface NewPlaceInput {
   tripId: string;
@@ -16,6 +34,7 @@ export interface NewPlaceInput {
   longitude: number;
   name?: string;
   category?: PlaceCategory;
+  address?: string | null;
 }
 
 /** Fields the editor may patch on an existing place. */
@@ -24,6 +43,7 @@ export type PlacePatch = Partial<
     Place,
     | 'name'
     | 'category'
+    | 'address'
     | 'startTime'
     | 'stayMinutes'
     | 'travelMinutes'
@@ -44,6 +64,13 @@ function toPlace(record: PlaceRecord): Place {
 }
 
 export const placeRepository = {
+  /** A single place by id, or undefined when it no longer exists. */
+  async get(id: string): Promise<Place | undefined> {
+    const record = await db.places.get(id);
+    if (!record) return undefined;
+    return toPlace(record);
+  },
+
   async listByTrip(tripId: string): Promise<Place[]> {
     const records = await db.places.where('tripId').equals(tripId).toArray();
     return records.map(toPlace).sort((a, b) => a.order - b.order);
@@ -77,6 +104,8 @@ export const placeRepository = {
           category: input.category ?? DEFAULT_CATEGORY,
           latitude: input.latitude,
           longitude: input.longitude,
+          // Schema normalises blank/whitespace to null and caps the length.
+          address: input.address ?? null,
           startTime: null,
           stayMinutes: null,
           travelMinutes: null,

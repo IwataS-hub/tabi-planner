@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PLACE_CATEGORIES } from '@/domain/types';
+import { PLACE_ADDRESS_MAX_LENGTH, PLACE_CATEGORIES } from '@/domain/types';
 import { isValidISODate, isValidTime } from '@/lib/date';
 import { isHttpUrl } from '@/lib/utils';
 
@@ -30,6 +30,26 @@ const optionalUrl = z
   );
 
 const nonNegativeInt = z.number().int('整数で入力してください').min(0, '0以上で入力してください');
+
+/**
+ * Optional address. Backward compatible with records that never had the field
+ * (missing / null both load as `null`) and with future JSON backups. A
+ * whitespace-only value is normalised to `null`; the length cap is checked
+ * after trimming.
+ */
+const optionalAddress = z
+  .string()
+  .nullish()
+  .transform((value) => {
+    const trimmed = (value ?? '').trim();
+    return trimmed === '' ? null : trimmed;
+  })
+  .pipe(
+    z
+      .string()
+      .max(PLACE_ADDRESS_MAX_LENGTH, `住所は${PLACE_ADDRESS_MAX_LENGTH}文字以内で入力してください`)
+      .nullable(),
+  );
 
 export const placeCategorySchema = z.enum(PLACE_CATEGORIES);
 
@@ -71,6 +91,7 @@ export const placeRecordSchema = z.object({
   category: placeCategorySchema,
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
+  address: optionalAddress,
   startTime: timeOfDay,
   stayMinutes: nonNegativeInt.max(1440, '滞在時間が長すぎます').nullable(),
   travelMinutes: nonNegativeInt.max(1440, '移動時間が長すぎます').nullable(),

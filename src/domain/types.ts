@@ -24,6 +24,12 @@ export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
 /** Current schema version persisted on every Trip. Bump when records change. */
 export const CURRENT_SCHEMA_VERSION = 1;
 
+/**
+ * Maximum stored length of a place address. Generous enough for any Japanese
+ * formatted address; API-sourced addresses are capped to this before saving.
+ */
+export const PLACE_ADDRESS_MAX_LENGTH = 200;
+
 export interface Trip {
   id: string;
   title: string;
@@ -56,6 +62,8 @@ export interface Place {
   category: PlaceCategory;
   latitude: number;
   longitude: number;
+  /** Optional formatted address (from search / reverse geocoding), or null. */
+  address: string | null;
   /** "HH:mm" 24h, or null when not scheduled. */
   startTime: string | null;
   /** Dwell time in minutes, or null. */

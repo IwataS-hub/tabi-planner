@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlaceRecord } from '@/db/records';
+import { PLACE_ADDRESS_MAX_LENGTH } from '@/domain/types';
 import { MAX_TRIP_DAYS, placeRecordSchema, tripFormSchema, tripRecordSchema } from './schemas';
 
 describe('tripFormSchema', () => {
@@ -48,6 +49,7 @@ describe('placeRecordSchema (rejects corrupt persistence data)', () => {
     category: 'sightseeing',
     latitude: 34.9948,
     longitude: 135.785,
+    address: '京都府京都市東山区清水1丁目294',
     startTime: '09:30',
     stayMinutes: 90,
     travelMinutes: 15,
@@ -85,6 +87,70 @@ describe('placeRecordSchema (rejects corrupt persistence data)', () => {
 
   it('accepts an empty URL (no link)', () => {
     expect(placeRecordSchema.safeParse({ ...valid, url: '' }).success).toBe(true);
+  });
+});
+
+describe('placeRecordSchema address (backward compatible, normalised)', () => {
+  // A v1-style record (the JSON-backup unit) that predates the address field.
+  const v1Record = {
+    id: 'p1',
+    tripId: 't1',
+    dayId: 'd1',
+    name: '清水寺',
+    category: 'sightseeing' as const,
+    latitude: 34.9948,
+    longitude: 135.785,
+    startTime: '09:30',
+    stayMinutes: 90,
+    travelMinutes: 15,
+    memo: '',
+    url: '',
+    estimatedCost: 400,
+    order: 0,
+    createdAt: '2026-06-16T00:00:00.000Z',
+    updatedAt: '2026-06-16T00:00:00.000Z',
+  };
+
+  it('loads a record with no address field (v1 backward compatibility) as null', () => {
+    const result = placeRecordSchema.safeParse(v1Record);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.address).toBeNull();
+  });
+
+  it('survives a JSON round-trip of a v1 backup (missing address → null)', () => {
+    const roundTripped = JSON.parse(JSON.stringify(v1Record)) as unknown;
+    const result = placeRecordSchema.safeParse(roundTripped);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.address).toBeNull();
+  });
+
+  it('keeps a provided address', () => {
+    const result = placeRecordSchema.safeParse({ ...v1Record, address: '東京都千代田区' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.address).toBe('東京都千代田区');
+  });
+
+  it('normalises a whitespace-only address to null', () => {
+    const result = placeRecordSchema.safeParse({ ...v1Record, address: '   ' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.address).toBeNull();
+  });
+
+  it('trims surrounding whitespace from an address', () => {
+    const result = placeRecordSchema.safeParse({ ...v1Record, address: '  東京駅  ' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.address).toBe('東京駅');
+  });
+
+  it('accepts an explicit null address', () => {
+    const result = placeRecordSchema.safeParse({ ...v1Record, address: null });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.address).toBeNull();
+  });
+
+  it(`rejects an address longer than ${PLACE_ADDRESS_MAX_LENGTH} characters`, () => {
+    const tooLong = 'あ'.repeat(PLACE_ADDRESS_MAX_LENGTH + 1);
+    expect(placeRecordSchema.safeParse({ ...v1Record, address: tooLong }).success).toBe(false);
   });
 });
 

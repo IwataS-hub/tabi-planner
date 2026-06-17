@@ -1,20 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Map as MapIcon, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorView, LoadingView } from '@/components/StateViews';
 import { AppHeader } from '@/components/AppHeader';
+import type { BiasCenter, GeoPlace } from '@/domain/geocoding';
 import type { LatLng } from '@/domain/types';
 import { summarizeDay } from '@/domain/summary';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
 import { useTrip, useTripDays, useTripPlaces } from '@/hooks/useTripData';
-import { placeRepository, type PlacePatch } from '@/repositories/placeRepository';
+import {
+  placeRepository,
+  reverseGeocodePatch,
+  type PlacePatch,
+} from '@/repositories/placeRepository';
+import { getGeocodingService } from '@/services/geocoding/geocodingService';
 import { ItineraryHeader } from './ItineraryHeader';
 import { DayTabs } from './DayTabs';
 import { DaySummaryBar } from './DaySummaryBar';
 import { PlaceList } from './PlaceList';
+import { PlaceSearch } from './PlaceSearch';
 import { MapPanel } from './MapPanel';
 import { PrintItinerary } from './PrintItinerary';
 
@@ -31,6 +38,28 @@ export function ItineraryPage() {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [fitNonce, setFitNonce] = useState(0);
   const [flyNonce, setFlyNonce] = useState(0);
+  const [flyToCoord, setFlyToCoord] = useState<LatLng | null>(null);
+  const [flyCoordNonce, setFlyCoordNonce] = useState(0);
+
+  // Resolved once; null when no API key is configured (search stays disabled,
+  // manual map-click adds keep working).
+  const geocodingService = useMemo(() => getGeocodingService(), []);
+  // Current map center, kept in a ref so it can bias searches without causing
+  // re-renders on every pan.
+  const mapCenterRef = useRef<LatLng | null>(null);
+  const getBias = useCallback<() => BiasCenter | null>(() => mapCenterRef.current, []);
+  const handleCenterChange = useCallback((center: LatLng) => {
+    mapCenterRef.current = center;
+  }, []);
+
+  // In-flight reverse-geocode requests, aborted if the page unmounts.
+  const reverseControllers = useRef<Set<AbortController>>(new Set());
+  useEffect(() => {
+    const controllers = reverseControllers.current;
+    return () => {
+      for (const controller of controllers) controller.abort();
+    };
+  }, []);
 
   const dayList = days.data ?? [];
   const placeList = useMemo(() => places.data ?? [], [places.data]);
@@ -75,8 +104,39 @@ export function ItineraryPage() {
     }
   };
 
+  /**
+   * Best-effort reverse geocoding for a just-added place. Runs in the
+   * background: the place already exists, so a failure (or a slow response)
+   * never blocks or undoes the add. The current persisted place is re-read at
+   * apply time so a late result can't overwrite a user edit or a deleted place.
+   */
+  const reverseGeocode = useCallback(
+    async (placeId: string, coord: LatLng) => {
+      if (!geocodingService) return;
+      const controller = new AbortController();
+      reverseControllers.current.add(controller);
+      try {
+        const result = await geocodingService.reverse({
+          latitude: coord.latitude,
+          longitude: coord.longitude,
+          signal: controller.signal,
+        });
+        const current = await placeRepository.get(placeId);
+        if (!current) return; // deleted meanwhile — never recreate
+        const patch = reverseGeocodePatch(current, result);
+        if (patch) await placeRepository.update(placeId, patch);
+      } catch {
+        // Reverse geocoding is best-effort; swallow so the main flow is unaffected.
+      } finally {
+        reverseControllers.current.delete(controller);
+      }
+    },
+    [geocodingService],
+  );
+
   const handleMapClick = async (latlng: LatLng) => {
     if (!tripId || !selectedDayId) return;
+    // Add immediately (unchanged behaviour); enrich in the background.
     const created = await track(() =>
       placeRepository.add({
         tripId,
@@ -85,7 +145,29 @@ export function ItineraryPage() {
         longitude: latlng.longitude,
       }),
     );
-    if (created) setSelectedPlaceId(created.id);
+    if (created) {
+      setSelectedPlaceId(created.id);
+      void reverseGeocode(created.id, latlng);
+    }
+  };
+
+  const handleSelectSearchResult = async (place: GeoPlace) => {
+    if (!tripId || !selectedDayId) return;
+    const created = await track(() =>
+      placeRepository.add({
+        tripId,
+        dayId: selectedDayId,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        name: place.name,
+        address: place.address,
+      }),
+    );
+    if (created) {
+      setSelectedPlaceId(created.id);
+      setFlyToCoord({ latitude: place.latitude, longitude: place.longitude });
+      setFlyCoordNonce((value) => value + 1);
+    }
   };
 
   const handleSave = (id: string, patch: PlacePatch) => {
@@ -140,16 +222,24 @@ export function ItineraryPage() {
   }
 
   const listColumn = (
-    <PlaceList
-      places={placesForDay}
-      selectedPlaceId={selectedPlaceId}
-      onSelect={togglePlace}
-      onReorder={handleReorder}
-      onSave={handleSave}
-      onDuplicate={handleDuplicate}
-      onDelete={handleDelete}
-      onFocusOnMap={handleFocusOnMap}
-    />
+    <div className="space-y-3">
+      <PlaceSearch
+        service={geocodingService}
+        getBias={getBias}
+        canAdd={selectedDayId !== null}
+        onSelectResult={handleSelectSearchResult}
+      />
+      <PlaceList
+        places={placesForDay}
+        selectedPlaceId={selectedPlaceId}
+        onSelect={togglePlace}
+        onReorder={handleReorder}
+        onSave={handleSave}
+        onDuplicate={handleDuplicate}
+        onDelete={handleDelete}
+        onFocusOnMap={handleFocusOnMap}
+      />
+    </div>
   );
 
   const mapColumn = (
@@ -158,9 +248,12 @@ export function ItineraryPage() {
       selectedPlaceId={selectedPlaceId}
       fitNonce={fitNonce}
       flyNonce={flyNonce}
+      flyToCoord={flyToCoord}
+      flyCoordNonce={flyCoordNonce}
       onSelectPlace={selectPlace}
       onMapClick={handleMapClick}
       onFitAll={() => setFitNonce((value) => value + 1)}
+      onCenterChange={handleCenterChange}
     />
   );
 

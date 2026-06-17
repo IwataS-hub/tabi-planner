@@ -16,6 +16,12 @@ interface TripMapProps {
   fitNonce: number;
   /** Increment to pan/zoom to the currently selected place. */
   flyNonce: number;
+  /** A coordinate to fly to (e.g. a freshly added search result). */
+  flyToCoord?: LatLng | null;
+  /** Increment to (re)trigger flying to {@link flyToCoord}. */
+  flyCoordNonce?: number;
+  /** Reports the current map center (used as a search bias). */
+  onCenterChange?: (center: LatLng) => void;
 }
 
 function MapClickHandler({ onMapClick }: { onMapClick: (latlng: LatLng) => void }) {
@@ -27,13 +33,35 @@ function MapClickHandler({ onMapClick }: { onMapClick: (latlng: LatLng) => void 
   return null;
 }
 
+/** Reports the map center on load and after each move, for search biasing. */
+function MapCenterReporter({ onCenterChange }: { onCenterChange: (center: LatLng) => void }) {
+  const map = useMapEvents({
+    moveend() {
+      const center = map.getCenter();
+      onCenterChange({ latitude: center.lat, longitude: center.lng });
+    },
+  });
+  useEffect(() => {
+    const center = map.getCenter();
+    onCenterChange({ latitude: center.lat, longitude: center.lng });
+    // Report once on mount; subsequent updates come from `moveend`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
 /** Imperatively moves the map: fly to the selection, fit to all pins on request. */
 function MapController({
   places,
   selectedPlaceId,
   fitNonce,
   flyNonce,
-}: Pick<TripMapProps, 'places' | 'selectedPlaceId' | 'fitNonce' | 'flyNonce'>) {
+  flyToCoord,
+  flyCoordNonce,
+}: Pick<
+  TripMapProps,
+  'places' | 'selectedPlaceId' | 'fitNonce' | 'flyNonce' | 'flyToCoord' | 'flyCoordNonce'
+>) {
   const map = useMap();
 
   // Keep Leaflet's internal size in sync when the container resizes
@@ -63,6 +91,16 @@ function MapController({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitNonce]);
 
+  // Fly to an explicit coordinate (a just-added search result, which may not be
+  // in `places` yet on this tick — so we cannot rely on the by-id fly above).
+  useEffect(() => {
+    if (!flyCoordNonce || !flyToCoord) return;
+    map.flyTo([flyToCoord.latitude, flyToCoord.longitude], Math.max(map.getZoom(), 14), {
+      duration: 0.6,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flyCoordNonce]);
+
   return null;
 }
 
@@ -73,6 +111,9 @@ export function TripMap({
   onMapClick,
   fitNonce,
   flyNonce,
+  flyToCoord,
+  flyCoordNonce,
+  onCenterChange,
 }: TripMapProps) {
   const line = useMemo<[number, number][]>(
     () => places.map((place) => [place.latitude, place.longitude]),
@@ -116,11 +157,14 @@ export function TripMap({
       ))}
 
       <MapClickHandler onMapClick={onMapClick} />
+      {onCenterChange ? <MapCenterReporter onCenterChange={onCenterChange} /> : null}
       <MapController
         places={places}
         selectedPlaceId={selectedPlaceId}
         fitNonce={fitNonce}
         flyNonce={flyNonce}
+        flyToCoord={flyToCoord}
+        flyCoordNonce={flyCoordNonce}
       />
     </MapContainer>
   );

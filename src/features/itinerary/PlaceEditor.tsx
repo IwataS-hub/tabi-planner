@@ -29,6 +29,7 @@ interface PlaceEditorProps {
 interface PlaceForm {
   name: string;
   category: PlaceCategory;
+  address: string;
   startTime: string;
   stayMinutes: string;
   travelMinutes: string;
@@ -41,6 +42,7 @@ function toForm(place: Place): PlaceForm {
   return {
     name: place.name,
     category: place.category,
+    address: place.address ?? '',
     startTime: place.startTime ?? '',
     stayMinutes: place.stayMinutes?.toString() ?? '',
     travelMinutes: place.travelMinutes?.toString() ?? '',
@@ -71,6 +73,9 @@ function buildPatch(current: PlaceForm, saved: PlaceForm): PlacePatch | null {
   const patch: PlacePatch = {};
   if (current.name !== saved.name) patch.name = current.name.trim() || DEFAULT_PLACE_NAME;
   if (current.category !== saved.category) patch.category = current.category;
+  if (current.address !== saved.address) {
+    patch.address = current.address.trim() === '' ? null : current.address.trim();
+  }
   if (current.startTime !== saved.startTime) {
     patch.startTime = current.startTime === '' ? null : current.startTime;
   }
@@ -144,6 +149,33 @@ export function PlaceEditor({
   // Flush any pending change when unmounting (switching place / closing).
   useEffect(() => () => flush(), [flush]);
 
+  // Reflect background enrichment (reverse geocoding fills name/address) into an
+  // open editor — but only for fields the user has NOT touched, so their edits
+  // are never overwritten. "Untouched" = current form value still equals the
+  // last persisted snapshot.
+  const incomingName = place.name;
+  const incomingAddress = place.address ?? '';
+  useEffect(() => {
+    setForm((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      if (incomingName !== savedRef.current.name && prev.name === savedRef.current.name) {
+        next.name = incomingName;
+        savedRef.current = { ...savedRef.current, name: incomingName };
+        changed = true;
+      }
+      if (
+        incomingAddress !== savedRef.current.address &&
+        prev.address === savedRef.current.address
+      ) {
+        next.address = incomingAddress;
+        savedRef.current = { ...savedRef.current, address: incomingAddress };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [incomingName, incomingAddress]);
+
   const update = (patch: Partial<PlaceForm>) => setForm((prev) => ({ ...prev, ...patch }));
 
   const urlInvalid = form.url !== '' && !isHttpUrl(form.url);
@@ -168,6 +200,17 @@ export function PlaceEditor({
             空のままにすると「{DEFAULT_PLACE_NAME}」として保存されます。
           </p>
         ) : null}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor={`${fieldId}-address`}>住所</Label>
+        <Input
+          id={`${fieldId}-address`}
+          value={form.address}
+          onChange={(event) => update({ address: event.target.value })}
+          onBlur={flush}
+          placeholder="検索や地図クリックで自動入力されます"
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

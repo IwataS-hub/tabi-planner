@@ -9,9 +9,12 @@ interface MapPanelProps {
   selectedPlaceId: string | null;
   fitNonce: number;
   flyNonce: number;
+  flyToCoord?: LatLng | null;
+  flyCoordNonce?: number;
   onSelectPlace: (id: string) => void;
   onMapClick: (latlng: LatLng) => void;
   onFitAll: () => void;
+  onCenterChange?: (center: LatLng) => void;
 }
 
 /** Map plus its toolbar (legend, fit-all). Controls sit above the map surface
@@ -21,9 +24,12 @@ export function MapPanel({
   selectedPlaceId,
   fitNonce,
   flyNonce,
+  flyToCoord,
+  flyCoordNonce,
   onSelectPlace,
   onMapClick,
   onFitAll,
+  onCenterChange,
 }: MapPanelProps) {
   return (
     <div className="flex h-full flex-col">
@@ -46,6 +52,9 @@ export function MapPanel({
           onMapClick={onMapClick}
           fitNonce={fitNonce}
           flyNonce={flyNonce}
+          flyToCoord={flyToCoord}
+          flyCoordNonce={flyCoordNonce}
+          onCenterChange={onCenterChange}
         />
       </div>
 

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, TabioriDatabase } from '@/db/database';
+import { placeToRecord } from '@/db/mappers';
 import type { PlaceRecord } from '@/db/records';
-import { DEFAULT_PLACE_NAME, placeRepository } from './placeRepository';
+import type { Place } from '@/domain/types';
+import { DEFAULT_PLACE_NAME, placeRepository, reverseGeocodePatch } from './placeRepository';
 import { tripRepository } from './tripRepository';
 
 async function seed() {
@@ -171,6 +173,134 @@ describe('persistence across a simulated reload', () => {
     } finally {
       fresh.close();
     }
+  });
+});
+
+describe('place address persistence', () => {
+  it('saves and restores an address provided on add', async () => {
+    const { tripId, dayId } = await seed();
+    const created = await placeRepository.add({
+      tripId,
+      dayId,
+      name: '東京駅',
+      address: '東京都千代田区丸の内1丁目',
+      ...coords(0),
+    });
+    expect(created.address).toBe('東京都千代田区丸の内1丁目');
+
+    const [restored] = await placeRepository.listByDay(dayId);
+    expect(restored.address).toBe('東京都千代田区丸の内1丁目');
+  });
+
+  it('defaults address to null when omitted on add', async () => {
+    const { tripId, dayId } = await seed();
+    const created = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    expect(created.address).toBeNull();
+  });
+
+  it('normalises a whitespace-only address to null', async () => {
+    const { tripId, dayId } = await seed();
+    const created = await placeRepository.add({ tripId, dayId, address: '   ', ...coords(0) });
+    expect(created.address).toBeNull();
+  });
+
+  it('restores legacy records that never had an address field as null', async () => {
+    const { tripId, dayId } = await seed();
+    // Insert a v1-style record (no address) directly, bypassing the add() path.
+    await db.places.add({
+      id: 'legacy',
+      tripId,
+      dayId,
+      name: '旧データ',
+      category: 'sightseeing',
+      latitude: 35,
+      longitude: 135,
+      startTime: null,
+      stayMinutes: null,
+      travelMinutes: null,
+      memo: '',
+      url: '',
+      estimatedCost: null,
+      order: 0,
+      createdAt: '2026-06-16T00:00:00.000Z',
+      updatedAt: '2026-06-16T00:00:00.000Z',
+    } as unknown as PlaceRecord);
+
+    const [restored] = await placeRepository.listByDay(dayId);
+    expect(restored.name).toBe('旧データ');
+    expect(restored.address).toBeNull();
+  });
+
+  it('updates an address via patch', async () => {
+    const { tripId, dayId } = await seed();
+    const created = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const updated = await placeRepository.update(created.id, { address: '大阪市北区' });
+    expect(updated.address).toBe('大阪市北区');
+  });
+
+  it('includes address when serialising for a backup (new export)', async () => {
+    const { tripId, dayId } = await seed();
+    const created = await placeRepository.add({
+      tripId,
+      dayId,
+      address: '北海道札幌市',
+      ...coords(0),
+    });
+    const serialised = placeToRecord(created);
+    expect(serialised).toHaveProperty('address', '北海道札幌市');
+    // The serialised record must round-trip cleanly through JSON.
+    const json = JSON.parse(JSON.stringify(serialised)) as { address: string };
+    expect(json.address).toBe('北海道札幌市');
+  });
+});
+
+describe('reverseGeocodePatch', () => {
+  const base: Place = {
+    id: 'p1',
+    tripId: 't1',
+    dayId: 'd1',
+    name: DEFAULT_PLACE_NAME,
+    category: 'sightseeing',
+    latitude: 35,
+    longitude: 135,
+    address: null,
+    startTime: null,
+    stayMinutes: null,
+    travelMinutes: null,
+    memo: '',
+    url: '',
+    estimatedCost: null,
+    order: 0,
+    createdAt: '2026-06-16T00:00:00.000Z',
+    updatedAt: '2026-06-16T00:00:00.000Z',
+  };
+
+  it('fills the address and the still-default name', () => {
+    const patch = reverseGeocodePatch(base, { name: '清水寺', address: '京都市東山区' });
+    expect(patch).toEqual({ name: '清水寺', address: '京都市東山区' });
+  });
+
+  it('does not overwrite a name the user already edited', () => {
+    const edited = { ...base, name: 'わたしの名前' };
+    const patch = reverseGeocodePatch(edited, { name: '清水寺', address: '京都市東山区' });
+    expect(patch).toEqual({ address: '京都市東山区' });
+  });
+
+  it('does not overwrite an address the user already entered', () => {
+    const edited = { ...base, address: '自分で入れた住所' };
+    const patch = reverseGeocodePatch(edited, { name: '清水寺', address: '京都市東山区' });
+    expect(patch).toEqual({ name: '清水寺' });
+  });
+
+  it('returns null when there is nothing to apply', () => {
+    const patch = reverseGeocodePatch(base, { name: null, address: null });
+    expect(patch).toBeNull();
+  });
+
+  it('returns null when name is edited and address already present', () => {
+    const edited = { ...base, name: '編集済み', address: '既存住所' };
+    const patch = reverseGeocodePatch(edited, { name: '清水寺', address: '京都市東山区' });
+    expect(patch).toBeNull();
   });
 });
 
