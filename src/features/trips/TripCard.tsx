@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Copy, MapPin, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { CalendarDays, Copy, Download, MapPin, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,9 +18,10 @@ interface TripCardProps {
   item: TripListItem;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onExport: (id: string) => void;
 }
 
-export function TripCard({ item, onDuplicate, onDelete }: TripCardProps) {
+export function TripCard({ item, onDuplicate, onDelete, onExport }: TripCardProps) {
   const navigate = useNavigate();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { trip, placeCount } = item;
@@ -85,6 +86,10 @@ export function TripCard({ item, onDuplicate, onDelete }: TripCardProps) {
             <DropdownMenuItem onSelect={() => onDuplicate(trip.id)}>
               <Copy aria-hidden />
               複製
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExport(trip.id)}>
+              <Download aria-hidden />
+              JSONで書き出し
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onSelect={() => setConfirmOpen(true)}>

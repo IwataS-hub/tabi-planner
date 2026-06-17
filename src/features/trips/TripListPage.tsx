@@ -7,7 +7,10 @@ import { ErrorView, LoadingView } from '@/components/StateViews';
 import { APP } from '@/config/app';
 import { useTripSummaries } from '@/hooks/useTripData';
 import { tripRepository } from '@/repositories/tripRepository';
+import { safeBackupFilename } from '@/domain/backup';
+import { downloadTextFile } from '@/lib/download';
 import { EmptyTrips } from './EmptyTrips';
+import { ImportTripButton } from './ImportTripButton';
 import { TripCard } from './TripCard';
 
 export function TripListPage() {
@@ -33,15 +36,30 @@ export function TripListPage() {
     }
   };
 
+  const handleExport = async (id: string) => {
+    try {
+      const backup = await tripRepository.exportTrip(id);
+      const filename = safeBackupFilename(backup.trip.title, backup.exportedAt);
+      downloadTextFile(filename, JSON.stringify(backup, null, 2));
+      toast.success(`${filename} を書き出しました`);
+    } catch (err) {
+      console.error('書き出しに失敗しました', err);
+      toast.error('書き出しに失敗しました');
+    }
+  };
+
   return (
     <div className="min-h-dvh">
       <AppHeader>
-        <Button asChild size="sm">
-          <Link to="/trips/new">
-            <Plus aria-hidden />
-            新しい旅行
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <ImportTripButton />
+          <Button asChild size="sm">
+            <Link to="/trips/new">
+              <Plus aria-hidden />
+              新しい旅行
+            </Link>
+          </Button>
+        </div>
       </AppHeader>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
@@ -69,7 +87,12 @@ export function TripListPage() {
               <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {data.map((item) => (
                   <li key={item.trip.id}>
-                    <TripCard item={item} onDuplicate={handleDuplicate} onDelete={handleDelete} />
+                    <TripCard
+                      item={item}
+                      onDuplicate={handleDuplicate}
+                      onDelete={handleDelete}
+                      onExport={handleExport}
+                    />
                   </li>
                 ))}
               </ul>

@@ -6,14 +6,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorView, LoadingView } from '@/components/StateViews';
 import { AppHeader } from '@/components/AppHeader';
 import type { LatLng } from '@/domain/types';
+import { summarizeDay } from '@/domain/summary';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
 import { useTrip, useTripDays, useTripPlaces } from '@/hooks/useTripData';
 import { placeRepository, type PlacePatch } from '@/repositories/placeRepository';
 import { ItineraryHeader } from './ItineraryHeader';
 import { DayTabs } from './DayTabs';
+import { DaySummaryBar } from './DaySummaryBar';
 import { PlaceList } from './PlaceList';
 import { MapPanel } from './MapPanel';
+import { PrintItinerary } from './PrintItinerary';
 
 export function ItineraryPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -55,6 +58,8 @@ export function ItineraryPage() {
     for (const place of placeList) counts[place.dayId] = (counts[place.dayId] ?? 0) + 1;
     return counts;
   }, [placeList]);
+
+  const daySummary = useMemo(() => summarizeDay(placesForDay), [placesForDay]);
 
   // --- mutations (all routed through the save-status tracker) -------------
   const selectPlace = (id: string) => {
@@ -160,48 +165,52 @@ export function ItineraryPage() {
   );
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
-      <ItineraryHeader trip={trip.data} />
+    <>
+      <div className="flex h-dvh flex-col overflow-hidden print:hidden">
+        <ItineraryHeader trip={trip.data} />
 
-      <div className="border-border bg-paper shrink-0 border-b px-3 py-2 sm:px-4">
-        <DayTabs
-          days={dayList}
-          selectedDayId={selectedDayId}
-          placeCountByDay={placeCountByDay}
-          onSelect={handleSelectDay}
-        />
-      </div>
+        <div className="border-border bg-paper shrink-0 space-y-2 border-b px-3 py-2 sm:px-4">
+          <DayTabs
+            days={dayList}
+            selectedDayId={selectedDayId}
+            placeCountByDay={placeCountByDay}
+            onSelect={handleSelectDay}
+          />
+          <DaySummaryBar summary={daySummary} />
+        </div>
 
-      <div className="min-h-0 flex-1">
-        {isDesktop ? (
-          <div className="grid h-full grid-cols-[minmax(360px,440px)_1fr]">
-            <div className="border-border bg-paper min-h-0 overflow-y-auto border-r p-3">
-              {listColumn}
+        <div className="min-h-0 flex-1">
+          {isDesktop ? (
+            <div className="grid h-full grid-cols-[minmax(360px,440px)_1fr]">
+              <div className="border-border bg-paper min-h-0 overflow-y-auto border-r p-3">
+                {listColumn}
+              </div>
+              <div className="min-h-0">{mapColumn}</div>
             </div>
-            <div className="min-h-0">{mapColumn}</div>
-          </div>
-        ) : (
-          <Tabs defaultValue="itinerary" className="flex h-full flex-col">
-            <TabsList className="mx-3 mt-2 self-center">
-              <TabsTrigger value="itinerary">
-                <ListChecks aria-hidden />
-                旅程
-              </TabsTrigger>
-              <TabsTrigger value="map">
-                <MapIcon aria-hidden />
-                地図
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="itinerary" className="min-h-0 flex-1 overflow-y-auto p-3">
-              {listColumn}
-            </TabsContent>
-            <TabsContent value="map" className="min-h-0 flex-1 data-[state=inactive]:hidden">
-              {mapColumn}
-            </TabsContent>
-          </Tabs>
-        )}
+          ) : (
+            <Tabs defaultValue="itinerary" className="flex h-full flex-col">
+              <TabsList className="mx-3 mt-2 self-center">
+                <TabsTrigger value="itinerary">
+                  <ListChecks aria-hidden />
+                  旅程
+                </TabsTrigger>
+                <TabsTrigger value="map">
+                  <MapIcon aria-hidden />
+                  地図
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="itinerary" className="min-h-0 flex-1 overflow-y-auto p-3">
+                {listColumn}
+              </TabsContent>
+              <TabsContent value="map" className="min-h-0 flex-1 data-[state=inactive]:hidden">
+                {mapColumn}
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
       </div>
-    </div>
+      <PrintItinerary trip={trip.data} days={dayList} places={placeList} />
+    </>
   );
 }
 

@@ -2,6 +2,7 @@ import { db } from '@/db/database';
 import { dayFromRecord, tripFromRecord } from '@/db/mappers';
 import type { PlaceRecord, TripDayRecord, TripRecord } from '@/db/records';
 import { CURRENT_SCHEMA_VERSION, type Trip, type TripDay } from '@/domain/types';
+import { buildBackup, type TripBackup } from '@/domain/backup';
 import { eachDateInRange } from '@/lib/date';
 import { createId } from '@/lib/utils';
 import {
@@ -232,5 +233,87 @@ export const tripRepository = {
     return records.map((record) =>
       dayFromRecord(validateRecord(tripDayRecordSchema, record, '日付データ')),
     );
+  },
+
+  /** Build a self-contained backup of one trip (trip + days + places). */
+  async exportTrip(id: string): Promise<TripBackup> {
+    const tripRecord = await db.trips.get(id);
+    if (!tripRecord) throw new Error(`旅行が見つかりません: ${id}`);
+    const trip = validateRecord(tripRecordSchema, tripRecord, '旅行データ');
+    const days = (await db.days.where('tripId').equals(id).sortBy('order')).map((day) =>
+      validateRecord(tripDayRecordSchema, day, '日付データ'),
+    );
+    const places = (await db.places.where('tripId').equals(id).sortBy('order')).map((place) =>
+      validateRecord(placeRecordSchema, place, 'スポットデータ'),
+    );
+    return buildBackup(trip, days, places);
+  },
+
+  /**
+   * Import a validated backup as a brand-new trip. All ids (trip/day/place) are
+   * regenerated and the tripId/dayId relationships are rewired accordingly; the
+   * existing trip is never touched. The whole insert runs in a single
+   * transaction, so a mid-way failure rolls back completely (no partial save).
+   * The caller is responsible for validating the backup (see `parseBackup`).
+   */
+  async importBackup(backup: TripBackup): Promise<Trip> {
+    const now = nowIso();
+    const newTripId = createId();
+    const dayIdMap = new Map<string, string>();
+
+    let savedTrip: TripRecord | undefined;
+    await db.transaction('rw', db.trips, db.days, db.places, async () => {
+      // Avoid title collisions with existing trips.
+      const existingTitles = new Set((await db.trips.toArray()).map((trip) => trip.title));
+      let title = backup.trip.title;
+      if (existingTitles.has(title)) {
+        const baseTitle = title;
+        let suffix = 2;
+        title = `${baseTitle}（読み込み）`;
+        while (existingTitles.has(title)) {
+          title = `${baseTitle}（読み込み ${suffix}）`;
+          suffix += 1;
+        }
+      }
+
+      const newTrip = validateRecord(
+        tripRecordSchema,
+        {
+          ...backup.trip,
+          id: newTripId,
+          title,
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+        },
+        '旅行の読み込み',
+      );
+      const newDays: TripDayRecord[] = backup.days.map((day) => {
+        const newId = createId();
+        dayIdMap.set(day.id, newId);
+        return validateRecord(
+          tripDayRecordSchema,
+          { ...day, id: newId, tripId: newTripId },
+          '日付データの読み込み',
+        );
+      });
+      const newPlaces: PlaceRecord[] = backup.places.map((place) => {
+        const dayId = dayIdMap.get(place.dayId);
+        if (!dayId) throw new Error(`スポットが参照する日付データが見つかりません: ${place.id}`);
+        return validateRecord(
+          placeRecordSchema,
+          { ...place, id: createId(), tripId: newTripId, dayId, createdAt: now, updatedAt: now },
+          'スポットの読み込み',
+        );
+      });
+
+      await db.trips.add(newTrip);
+      await db.days.bulkAdd(newDays);
+      if (newPlaces.length > 0) await db.places.bulkAdd(newPlaces);
+      savedTrip = newTrip;
+    });
+
+    if (!savedTrip) throw new Error('旅行の読み込みに失敗しました');
+    return tripFromRecord(savedTrip);
   },
 };
