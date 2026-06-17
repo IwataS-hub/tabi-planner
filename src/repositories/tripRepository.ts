@@ -288,24 +288,48 @@ export const tripRepository = {
         },
         '旅行の読み込み',
       );
-      const newDays: TripDayRecord[] = backup.days.map((day) => {
+      const orderedDays = [...backup.days].sort(
+        (a, b) => a.date.localeCompare(b.date) || a.order - b.order,
+      );
+      const placesByDay = new Map<string, PlaceRecord[]>();
+      for (const place of backup.places) {
+        const dayPlaces = placesByDay.get(place.dayId) ?? [];
+        dayPlaces.push(place);
+        placesByDay.set(place.dayId, dayPlaces);
+      }
+
+      const newDays: TripDayRecord[] = orderedDays.map((day, index) => {
         const newId = createId();
         dayIdMap.set(day.id, newId);
         return validateRecord(
           tripDayRecordSchema,
-          { ...day, id: newId, tripId: newTripId },
+          { ...day, id: newId, tripId: newTripId, order: index },
           '日付データの読み込み',
         );
       });
-      const newPlaces: PlaceRecord[] = backup.places.map((place) => {
-        const dayId = dayIdMap.get(place.dayId);
-        if (!dayId) throw new Error(`スポットが参照する日付データが見つかりません: ${place.id}`);
-        return validateRecord(
-          placeRecordSchema,
-          { ...place, id: createId(), tripId: newTripId, dayId, createdAt: now, updatedAt: now },
-          'スポットの読み込み',
-        );
-      });
+      const newPlaces: PlaceRecord[] = orderedDays.flatMap((day) =>
+        (placesByDay.get(day.id) ?? [])
+          .sort((a, b) => a.order - b.order)
+          .map((place, index) => {
+            const dayId = dayIdMap.get(place.dayId);
+            if (!dayId) {
+              throw new Error(`スポットが参照する日付データが見つかりません: ${place.id}`);
+            }
+            return validateRecord(
+              placeRecordSchema,
+              {
+                ...place,
+                id: createId(),
+                tripId: newTripId,
+                dayId,
+                order: index,
+                createdAt: now,
+                updatedAt: now,
+              },
+              'スポットの読み込み',
+            );
+          }),
+      );
 
       await db.trips.add(newTrip);
       await db.days.bulkAdd(newDays);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { db } from '@/db/database';
 import { placeRepository } from '@/repositories/placeRepository';
@@ -62,5 +62,18 @@ describe('ImportTripButton', () => {
     expect(await screen.findByText('読み込みできませんでした')).toBeInTheDocument();
     expect(await screen.findByText(/JSONとして読み込めませんでした/)).toBeInTheDocument();
     expect(await db.trips.count()).toBe(0);
+  });
+
+  it('ignores a second import while one is already running', async () => {
+    const file = await makeBackupFile();
+    render(<ImportTripButton />);
+
+    const input = fileInput();
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(async () => {
+      expect(await db.trips.count()).toBe(1);
+    });
   });
 });
