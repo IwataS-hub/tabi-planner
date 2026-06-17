@@ -243,9 +243,18 @@ export const tripRepository = {
     const days = (await db.days.where('tripId').equals(id).sortBy('order')).map((day) =>
       validateRecord(tripDayRecordSchema, day, '日付データ'),
     );
-    const places = (await db.places.where('tripId').equals(id).sortBy('order')).map((place) =>
-      validateRecord(placeRecordSchema, place, 'スポットデータ'),
-    );
+    // Order places deterministically by day (in day order) then within-day
+    // order. A trip-wide sort by `order` alone is ambiguous because `order` is
+    // per-day, so several places share the same value; that left export order
+    // dependent on the storage engine's tie-break. A stable order keeps backups
+    // diffable and imports predictable.
+    const dayOrder = new Map(days.map((day, index) => [day.id, index]));
+    const places = (await db.places.where('tripId').equals(id).toArray())
+      .map((place) => validateRecord(placeRecordSchema, place, 'スポットデータ'))
+      .sort((a, b) => {
+        const dayDelta = (dayOrder.get(a.dayId) ?? Infinity) - (dayOrder.get(b.dayId) ?? Infinity);
+        return dayDelta !== 0 ? dayDelta : a.order - b.order;
+      });
     return buildBackup(trip, days, places);
   },
 

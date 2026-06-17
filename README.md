@@ -65,18 +65,18 @@
 
 ## 技術構成
 
-| 領域           | 採用技術                                                       |
-| -------------- | -------------------------------------------------------------- |
-| ビルド / 言語  | Vite 8・React 19・TypeScript 6（`strict`、`any` 禁止）         |
-| スタイル       | Tailwind CSS v4・shadcn/ui 準拠の自作プリミティブ              |
-| ルーティング   | React Router（`HashRouter` — GitHub Pages でサーバー設定不要） |
-| 地図           | React Leaflet・Leaflet・**地理院タイル（標準地図）**           |
+| 領域           | 採用技術                                                           |
+| -------------- | ------------------------------------------------------------------ |
+| ビルド / 言語  | Vite 8・React 19・TypeScript 6（`strict`、`any` 禁止）             |
+| スタイル       | Tailwind CSS v4・shadcn/ui 準拠の自作プリミティブ                  |
+| ルーティング   | React Router（`HashRouter` — GitHub Pages でサーバー設定不要）     |
+| 地図           | React Leaflet・Leaflet・**地理院タイル（標準地図）**               |
 | 地名検索       | **Geoapify Geocoding API**（任意。サービス層で抽象化・差し替え可） |
-| 並べ替え       | dnd-kit                                                        |
-| 永続化         | Dexie（IndexedDB）＋リポジトリ層                               |
-| バリデーション | Zod（永続データ・フォーム入力・バックアップの検証）            |
-| テスト         | Vitest・React Testing Library・Playwright                      |
-| 品質           | ESLint（Flat Config）・Prettier                                |
+| 並べ替え       | dnd-kit                                                            |
+| 永続化         | Dexie（IndexedDB）＋リポジトリ層                                   |
+| バリデーション | Zod（永続データ・フォーム入力・バックアップの検証）                |
+| テスト         | Vitest・React Testing Library・Playwright                          |
+| 品質           | ESLint（Flat Config）・Prettier                                    |
 
 ### アーキテクチャ（責務分離）
 

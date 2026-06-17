@@ -11,6 +11,7 @@ function place(overrides: Partial<Place>): Place {
     category: 'sightseeing',
     latitude: 35,
     longitude: 135,
+    address: null,
     startTime: null,
     stayMinutes: null,
     travelMinutes: null,

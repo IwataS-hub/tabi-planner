@@ -35,6 +35,7 @@ const places: PlaceRecord[] = [
     category: 'sightseeing',
     latitude: 34.9948,
     longitude: 135.785,
+    address: '京都府京都市東山区清水1丁目294',
     startTime: '09:30',
     stayMinutes: 90,
     travelMinutes: 15,
@@ -91,6 +92,31 @@ describe('parseBackup', () => {
   it('rejects a file larger than the size limit', () => {
     const huge = 'x'.repeat(MAX_BACKUP_BYTES + 1);
     expect(() => parseBackup(huge)).toThrow(/サイズ/);
+  });
+
+  // --- Phase 2.1 address compatibility (format/version 1 is unchanged) ----
+
+  it('includes address in a newly exported backup', () => {
+    const backup = parseBackup(validText());
+    expect(backup.version).toBe(1);
+    expect(backup.places[0].address).toBe('京都府京都市東山区清水1丁目294');
+  });
+
+  it('reads an old version 1 backup whose places have no address (→ null)', () => {
+    // Simulate a backup written before the address field existed.
+    const legacy = buildBackup(trip, days, places) as unknown as Record<string, unknown>;
+    legacy.places = (legacy.places as Record<string, unknown>[]).map((place) => {
+      const { address: _omit, ...rest } = place;
+      return rest;
+    });
+    const backup = parseBackup(JSON.stringify(legacy));
+    expect(backup.places[0].address).toBeNull();
+  });
+
+  it('normalises a whitespace-only address to null on import', () => {
+    const backup = buildBackup(trip, days, [{ ...places[0], address: '   ' }]);
+    const parsed = parseBackup(JSON.stringify(backup));
+    expect(parsed.places[0].address).toBeNull();
   });
 });
 
