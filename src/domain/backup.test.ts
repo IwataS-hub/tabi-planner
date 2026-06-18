@@ -168,8 +168,6 @@ describe('Phase 2.3 new entities in backup', () => {
     expenseId: 'exp1',
     participantId: 'part1',
     amountYen: 3000,
-    createdAt: ISO,
-    updatedAt: ISO,
   };
 
   const checklistItem: ChecklistItemRecord = {
@@ -219,13 +217,13 @@ describe('Phase 2.3 new entities in backup', () => {
   });
 
   it('rejects a share whose expenseId does not exist', () => {
-    const badShare: ExpenseShareRecord = { ...expenseShare, expenseId: 'ghost' };
+    const badShare = { ...expenseShare, expenseId: 'ghost' };
     const backup = buildBackup(trip, days, places, [participant], [expense], [badShare], []);
     expect(() => parseBackup(JSON.stringify(backup))).toThrow(BackupError);
   });
 
   it('rejects a share whose participantId does not exist', () => {
-    const badShare: ExpenseShareRecord = { ...expenseShare, participantId: 'ghost' };
+    const badShare = { ...expenseShare, participantId: 'ghost' };
     const backup = buildBackup(trip, days, places, [participant], [expense], [badShare], []);
     expect(() => parseBackup(JSON.stringify(backup))).toThrow(BackupError);
   });

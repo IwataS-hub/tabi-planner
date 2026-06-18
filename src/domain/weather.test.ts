@@ -5,9 +5,7 @@ import {
   getWeatherSuggestions,
   isDateInForecastRange,
   parseDailyWeather,
-  parseHourlyWeather,
   wmoDescription,
-  WMO_DESCRIPTIONS,
   openMeteoResponseSchema,
   type DayWeather,
 } from './weather';

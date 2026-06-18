@@ -31,7 +31,7 @@ function makeExpense(overrides: Partial<Expense> & { id: string }): Expense {
 }
 
 function makeShare(expenseId: string, participantId: string, amountYen: number): ExpenseShare {
-  return { id: `${expenseId}-${participantId}`, expenseId, participantId, amountYen, createdAt: '', updatedAt: '' };
+  return { id: `${expenseId}-${participantId}`, expenseId, participantId, amountYen };
 }
 
 const p1 = makeParticipant('p1', 'Alice');
@@ -60,10 +60,7 @@ describe('computeBalances', () => {
 
 describe('computeSettlement', () => {
   it('returns empty for zero balances', () => {
-    const balances = [
-      { participantId: 'p1', participantName: 'Alice', balance: 0 },
-      { participantId: 'p2', participantName: 'Bob', balance: 0 },
-    ];
+    const balances = computeBalances([p1, p2], [], []);
     expect(computeSettlement(balances)).toHaveLength(0);
   });
 
@@ -79,18 +76,16 @@ describe('computeSettlement', () => {
   });
 
   it('handles three-person split correctly', () => {
-    // Alice paid 900, equal split among 3 → bob and carol owe 300 each
     const expense = makeExpense({ id: 'e1', payerId: 'p1', amountYen: 900 });
     const shares = [makeShare('e1', 'p1', 300), makeShare('e1', 'p2', 300), makeShare('e1', 'p3', 300)];
     const balances = computeBalances([p1, p2, p3], [expense], shares);
     const settlement = computeSettlement(balances);
     expect(settlement).toHaveLength(2);
     const total = settlement.reduce((sum, t) => sum + t.amountYen, 0);
-    expect(total).toBe(600); // alice receives 300+300
+    expect(total).toBe(600);
   });
 
-  it('net-zero with cross payments', () => {
-    // Alice pays 1200 for p1+p2+p3 (400 each); Bob pays 600 for p1+p2+p3 (200 each)
+  it('balances net-zero with cross payments', () => {
     const e1 = makeExpense({ id: 'e1', payerId: 'p1', amountYen: 1200 });
     const e2 = makeExpense({ id: 'e2', payerId: 'p2', amountYen: 600 });
     const shares = [
@@ -98,14 +93,12 @@ describe('computeSettlement', () => {
       makeShare('e2', 'p1', 200), makeShare('e2', 'p2', 200), makeShare('e2', 'p3', 200),
     ];
     const balances = computeBalances([p1, p2, p3], [e1, e2], shares);
+    const creditorTotal = balances.filter((b) => b.balance > 0).reduce((s, b) => s + b.balance, 0);
+    const debtorTotal = balances.filter((b) => b.balance < 0).reduce((s, b) => s + b.balance, 0);
+    expect(creditorTotal + debtorTotal).toBe(0);
     const settlement = computeSettlement(balances);
-    // total transfers should balance to zero
-    const creditors = balances.filter((b) => b.balance > 0).reduce((s, b) => s + b.balance, 0);
-    const debtors = balances.filter((b) => b.balance < 0).reduce((s, b) => s + b.balance, 0);
-    expect(creditors + debtors).toBe(0);
-    // all transfers go to creditors
-    const totalTransferred = settlement.reduce((s, t) => s + t.amountYen, 0);
-    expect(totalTransferred).toBe(creditors);
+    const transferTotal = settlement.reduce((s, t) => s + t.amountYen, 0);
+    expect(transferTotal).toBe(creditorTotal);
   });
 });
 
@@ -115,7 +108,7 @@ describe('computeBudgetSummary', () => {
     makeExpense({ id: 'e2', amountYen: 2000 }),
   ];
 
-  it('calculates total spent', () => {
+  it('calculates total spent without budget', () => {
     const summary = computeBudgetSummary(null, expenses);
     expect(summary.spentYen).toBe(5000);
     expect(summary.remainingYen).toBeNull();
@@ -156,7 +149,7 @@ describe('summarizeByCategory', () => {
 });
 
 describe('summarizeByDay', () => {
-  it('groups by dayId', () => {
+  it('groups by dayId and excludes null dayId', () => {
     const expenses = [
       makeExpense({ id: 'e1', dayId: 'day1', amountYen: 1000 }),
       makeExpense({ id: 'e2', dayId: 'day1', amountYen: 500 }),
@@ -166,6 +159,9 @@ describe('summarizeByDay', () => {
     const summaries = summarizeByDay(expenses);
     const day1 = summaries.find((s) => s.dayId === 'day1');
     expect(day1?.totalYen).toBe(1500);
+    expect(summaries.find((s) => s.dayId === 'day2')?.totalYen).toBe(2000);
+    // null dayId should be excluded
+    expect(summaries).toHaveLength(2);
   });
 });
 
@@ -175,11 +171,10 @@ describe('equalSplit', () => {
     expect(result.every((s) => s.amountYen === 300)).toBe(true);
   });
 
-  it('allocates remainder to first participant by order then id', () => {
+  it('allocates remainder to first participants by order', () => {
     const result = equalSplit(1000, [p1, p2, p3]);
     const total = result.reduce((s, r) => s + r.amountYen, 0);
     expect(total).toBe(1000);
-    // Some share should be 334, rest 333
     const counts = new Map<number, number>();
     for (const r of result) {
       counts.set(r.amountYen, (counts.get(r.amountYen) ?? 0) + 1);
@@ -190,5 +185,11 @@ describe('equalSplit', () => {
 
   it('returns empty for zero participants', () => {
     expect(equalSplit(1000, [])).toHaveLength(0);
+  });
+
+  it('all goes to single participant', () => {
+    const result = equalSplit(1500, [p1]);
+    expect(result).toHaveLength(1);
+    expect(result[0].amountYen).toBe(1500);
   });
 });

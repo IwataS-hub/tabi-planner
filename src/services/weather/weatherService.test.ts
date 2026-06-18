@@ -10,17 +10,17 @@ import type { TripWeather } from '@/domain/weather';
 import type { TripDay, Place } from '@/domain/types';
 
 function makeDay(id: string, order: number): TripDay {
-  return { id, tripId: 'trip1', date: '2026-07-01', order, createdAt: '', updatedAt: '' };
+  return { id, tripId: 'trip1', date: '2026-07-01', order };
 }
 
-function makePlace(id: string, lat: number | null, lon: number | null): Place {
+function makePlace(id: string, lat: number, lon: number): Place {
   return {
     id,
     tripId: 'trip1',
     dayId: 'day1',
     name: 'Test',
     category: 'sightseeing',
-    address: '',
+    address: null,
     latitude: lat,
     longitude: lon,
     stayMinutes: null,
@@ -29,6 +29,9 @@ function makePlace(id: string, lat: number | null, lon: number | null): Place {
     travelMode: null,
     travelDistanceMeters: null,
     travelEstimateSource: null,
+    travelToPlaceId: null,
+    travelRouteKey: null,
+    travelCalculatedAt: null,
     estimatedCost: null,
     url: '',
     memo: '',
@@ -54,15 +57,6 @@ describe('representativeCoordinate', () => {
     expect(representativeCoordinate(days, placesByDay)).toBeNull();
   });
 
-  it('returns null when places have no coords', () => {
-    const days = [makeDay('d1', 0)];
-    const placesByDay: Record<string, Place[]> = { d1: [makePlace('p1', null, null)] };
-    const coord = representativeCoordinate(days, placesByDay);
-    // Returns the LatLng but both fields are null
-    expect(coord?.latitude).toBeNull();
-    expect(coord?.longitude).toBeNull();
-  });
-
   it('returns first place on first day by order', () => {
     const days = [makeDay('d1', 0), makeDay('d2', 1)];
     const placesByDay: Record<string, Place[]> = {
@@ -83,6 +77,15 @@ describe('representativeCoordinate', () => {
     const coord = representativeCoordinate(days, placesByDay, 'd2');
     expect(coord?.latitude).toBe(34.0);
     expect(coord?.longitude).toBe(136.0);
+  });
+
+  it('falls back to first day when preferred day has no places', () => {
+    const days = [makeDay('d1', 0), makeDay('d2', 1)];
+    const placesByDay: Record<string, Place[]> = {
+      d1: [makePlace('p1', 35.0, 135.0)],
+    };
+    const coord = representativeCoordinate(days, placesByDay, 'd2');
+    expect(coord?.latitude).toBe(35.0);
   });
 });
 
@@ -118,7 +121,6 @@ describe('fetchTripWeather', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce();
     const req = mockFetch.mock.calls[0][0];
-    // startDate should be clamped to today
     expect(req.startDate).toBe(today);
   });
 
