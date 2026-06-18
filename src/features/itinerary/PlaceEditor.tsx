@@ -149,12 +149,13 @@ export function PlaceEditor({
   // Flush any pending change when unmounting (switching place / closing).
   useEffect(() => () => flush(), [flush]);
 
-  // Reflect background enrichment (reverse geocoding fills name/address) into an
-  // open editor — but only for fields the user has NOT touched, so their edits
-  // are never overwritten. "Untouched" = current form value still equals the
-  // last persisted snapshot.
+  // Reflect background enrichment (reverse geocoding fills name/address) and
+  // route calculation (travelMinutes) into an open editor — but only for fields
+  // the user has NOT touched, so their edits are never overwritten.
+  // "Untouched" = current form value still equals the last persisted snapshot.
   const incomingName = place.name;
   const incomingAddress = place.address ?? '';
+  const incomingTravelMinutes = place.travelMinutes?.toString() ?? '';
   useEffect(() => {
     setForm((prev) => {
       const next = { ...prev };
@@ -172,9 +173,17 @@ export function PlaceEditor({
         savedRef.current = { ...savedRef.current, address: incomingAddress };
         changed = true;
       }
+      if (
+        incomingTravelMinutes !== savedRef.current.travelMinutes &&
+        prev.travelMinutes === savedRef.current.travelMinutes
+      ) {
+        next.travelMinutes = incomingTravelMinutes;
+        savedRef.current = { ...savedRef.current, travelMinutes: incomingTravelMinutes };
+        changed = true;
+      }
       return changed ? next : prev;
     });
-  }, [incomingName, incomingAddress]);
+  }, [incomingName, incomingAddress, incomingTravelMinutes]);
 
   const update = (patch: Partial<PlaceForm>) => setForm((prev) => ({ ...prev, ...patch }));
 

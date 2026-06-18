@@ -222,19 +222,32 @@ export function ItineraryPage() {
         { latitude: toPlace.latitude, longitude: toPlace.longitude },
         mode,
       );
-      setRouteGeometries((prev) => new Map(prev).set(key, estimate.geometry));
       setSelectedLegId(fromPlace.id);
-      void track(() =>
-        placeRepository.saveRouteEstimate({
+      void track(async () => {
+        const saved = await placeRepository.saveRouteEstimate({
           fromPlaceId: fromPlace.id,
           toPlaceId: toPlace.id,
           mode,
           minutes: secondsToTravelMinutes(estimate.timeSeconds),
           distanceMeters: Math.round(estimate.distanceMeters),
           expectedRouteKey: key,
+          fromUpdatedAt: fromPlace.updatedAt,
+          fromTravelMinutes: fromPlace.travelMinutes,
+          fromTravelEstimateSource: fromPlace.travelEstimateSource,
           calculatedAt: new Date().toISOString(),
-        }),
-      );
+        });
+        if (saved) {
+          setRouteGeometries((prev) => new Map(prev).set(key, estimate.geometry));
+        } else {
+          setRouteGeometries((prev) => {
+            const next = new Map(prev);
+            next.delete(key);
+            return next;
+          });
+          setSelectedLegId((current) => (current === fromPlace.id ? null : current));
+        }
+        return saved;
+      });
     },
     [track],
   );

@@ -31,7 +31,7 @@ function clearedAutoTravel() {
  * never cleared here. The auto value (including `travelMinutes`) is wiped so a
  * stale time can never be shown for a different segment.
  */
-async function reconcileAutoTravelInDay(dayId: string): Promise<void> {
+export async function reconcileAutoTravelInDay(dayId: string): Promise<void> {
   const places = await db.places.where('dayId').equals(dayId).sortBy('order');
   const updates: PlaceRecord[] = [];
   for (let i = 0; i < places.length; i += 1) {
@@ -309,6 +309,9 @@ export const placeRepository = {
     minutes: number;
     distanceMeters: number;
     expectedRouteKey: string;
+    fromUpdatedAt: string;
+    fromTravelMinutes: number | null;
+    fromTravelEstimateSource: Place['travelEstimateSource'];
     calculatedAt: string;
   }): Promise<Place | null> {
     let saved: PlaceRecord | undefined;
@@ -323,6 +326,15 @@ export const placeRepository = {
       const index = siblings.findIndex((place) => place.id === from.id);
       const next = siblings[index + 1];
       if (!next || next.id !== input.toPlaceId) {
+        stale = true;
+        return;
+      }
+      if (
+        from.tripId !== next.tripId ||
+        from.updatedAt !== input.fromUpdatedAt ||
+        from.travelMinutes !== input.fromTravelMinutes ||
+        from.travelEstimateSource !== input.fromTravelEstimateSource
+      ) {
         stale = true;
         return;
       }

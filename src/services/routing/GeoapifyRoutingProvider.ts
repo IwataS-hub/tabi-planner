@@ -20,8 +20,11 @@ const nonNegativeFinite = z
 const positionSchema = z.array(z.number().refine(Number.isFinite, '座標が不正です')).min(2);
 
 const geometrySchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('LineString'), coordinates: z.array(positionSchema) }),
-  z.object({ type: z.literal('MultiLineString'), coordinates: z.array(z.array(positionSchema)) }),
+  z.object({ type: z.literal('LineString'), coordinates: z.array(positionSchema).min(2) }),
+  z.object({
+    type: z.literal('MultiLineString'),
+    coordinates: z.array(z.array(positionSchema).min(2)).min(1),
+  }),
 ]);
 
 const featureSchema = z.object({
@@ -126,6 +129,7 @@ export class GeoapifyRoutingProvider implements RoutingProvider {
     );
     url.searchParams.set('mode', geoapifyRoutingMode(request.mode));
     url.searchParams.set('lang', 'ja');
+    url.searchParams.set('units', 'metric');
     url.searchParams.set('format', 'geojson');
     url.searchParams.set('apiKey', this.apiKey);
     return url.toString();

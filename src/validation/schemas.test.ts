@@ -94,6 +94,35 @@ describe('placeRecordSchema (rejects corrupt persistence data)', () => {
   it('accepts an empty URL (no link)', () => {
     expect(placeRecordSchema.safeParse({ ...valid, url: '' }).success).toBe(true);
   });
+
+  it('normalises a legacy travelMinutes-only record to manual', () => {
+    const result = placeRecordSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.travelEstimateSource).toBe('manual');
+  });
+
+  it('rejects incomplete auto travel metadata', () => {
+    const result = placeRecordSchema.safeParse({
+      ...valid,
+      travelMinutes: 15,
+      travelEstimateSource: 'auto',
+      travelMode: 'walk',
+      travelDistanceMeters: null,
+      travelToPlaceId: 'p2',
+      travelRouteKey: '35.00000,135.00000,35.10000,135.10000,walk',
+      travelCalculatedAt: '2026-06-16T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects manual travel time mixed with auto metadata', () => {
+    const result = placeRecordSchema.safeParse({
+      ...valid,
+      travelEstimateSource: 'manual',
+      travelDistanceMeters: 1000,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('placeRecordSchema address (backward compatible, normalised)', () => {

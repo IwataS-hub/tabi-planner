@@ -19,6 +19,9 @@ async function saveWalkLeg(from: Place, to: Place, minutes = 18, distance = 1300
     minutes,
     distanceMeters: distance,
     expectedRouteKey: routeKey(latLng(from), latLng(to), 'walk'),
+    fromUpdatedAt: from.updatedAt,
+    fromTravelMinutes: from.travelMinutes,
+    fromTravelEstimateSource: from.travelEstimateSource,
     calculatedAt: '2026-06-16T00:00:00.000Z',
   });
 }
@@ -358,6 +361,9 @@ describe('route estimates (Phase 2.2)', () => {
       minutes: 30,
       distanceMeters: 2000,
       expectedRouteKey: routeKey(latLng(a), latLng(c), 'walk'),
+      fromUpdatedAt: a.updatedAt,
+      fromTravelMinutes: a.travelMinutes,
+      fromTravelEstimateSource: a.travelEstimateSource,
       calculatedAt: '2026-06-16T00:00:00.000Z',
     });
     expect(result).toBeNull();
@@ -389,6 +395,32 @@ describe('route estimates (Phase 2.2)', () => {
     expect(edited.travelDistanceMeters).toBeNull();
     expect(edited.travelToPlaceId).toBeNull();
     expect(edited.travelRouteKey).toBeNull();
+  });
+
+  it('does not overwrite a manual edit made while an auto result is in flight', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await placeRepository.update(a.id, { travelMinutes: 25 });
+
+    const stale = await placeRepository.saveRouteEstimate({
+      fromPlaceId: a.id,
+      toPlaceId: b.id,
+      mode: 'walk',
+      minutes: 18,
+      distanceMeters: 1300,
+      expectedRouteKey: routeKey(latLng(a), latLng(b), 'walk'),
+      fromUpdatedAt: a.updatedAt,
+      fromTravelMinutes: a.travelMinutes,
+      fromTravelEstimateSource: a.travelEstimateSource,
+      calculatedAt: '2026-06-16T00:00:00.000Z',
+    });
+
+    expect(stale).toBeNull();
+    const reloaded = await placeRepository.get(a.id);
+    expect(reloaded!.travelMinutes).toBe(25);
+    expect(reloaded!.travelEstimateSource).toBe('manual');
+    expect(reloaded!.travelDistanceMeters).toBeNull();
   });
 
   it('invalidates an auto estimate after a reorder changes the next place', async () => {

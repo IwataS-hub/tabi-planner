@@ -70,7 +70,14 @@ export function secondsToTravelMinutes(seconds: number): number {
 const COORD_KEY_PRECISION = 5;
 
 function roundCoord(value: number): string {
-  return value.toFixed(COORD_KEY_PRECISION);
+  const normalised = Object.is(value, -0) ? 0 : value;
+  return normalised.toFixed(COORD_KEY_PRECISION);
+}
+
+function assertFiniteCoordinate(value: number, label: string, min: number, max: number): void {
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new RangeError(`${label} is outside the valid coordinate range`);
+  }
 }
 
 /**
@@ -79,6 +86,10 @@ function roundCoord(value: number): string {
  * stale estimates. It NEVER contains the API key or a request URL.
  */
 export function routeKey(from: LatLng, to: LatLng, mode: TravelMode): string {
+  assertFiniteCoordinate(from.latitude, 'from.latitude', -90, 90);
+  assertFiniteCoordinate(from.longitude, 'from.longitude', -180, 180);
+  assertFiniteCoordinate(to.latitude, 'to.latitude', -90, 90);
+  assertFiniteCoordinate(to.longitude, 'to.longitude', -180, 180);
   return [
     roundCoord(from.latitude),
     roundCoord(from.longitude),

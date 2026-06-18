@@ -107,6 +107,7 @@ describe('GeoapifyRoutingProvider.route', () => {
     const url = new URL(calls[0]);
     expect(url.searchParams.get('mode')).toBe(expected);
     expect(url.searchParams.get('lang')).toBe('ja');
+    expect(url.searchParams.get('units')).toBe('metric');
     const waypoints = url.searchParams.get('waypoints') ?? '';
     expect(waypoints).toBe('34.9948,135.785|34.9858,135.7588');
     expect(waypoints.split('|')).toHaveLength(2);
@@ -165,6 +166,22 @@ describe('GeoapifyRoutingProvider.route', () => {
     const provider = new GeoapifyRoutingProvider({ apiKey: API_KEY, fetchImpl });
     await expect(provider.route({ from: FROM, to: TO, mode: 'walk' })).rejects.toMatchObject({
       kind: 'no-route',
+    });
+  });
+
+  it('rejects empty route geometry', async () => {
+    const body = {
+      features: [
+        {
+          properties: { distance: 100, time: 60 },
+          geometry: { type: 'MultiLineString', coordinates: [[]] },
+        },
+      ],
+    };
+    const { fetchImpl } = recordingFetch(jsonResponse(body));
+    const provider = new GeoapifyRoutingProvider({ apiKey: API_KEY, fetchImpl });
+    await expect(provider.route({ from: FROM, to: TO, mode: 'walk' })).rejects.toMatchObject({
+      kind: 'invalid-response',
     });
   });
 

@@ -121,31 +121,94 @@ export const tripDayRecordSchema = z.object({
   order: nonNegativeInt,
 });
 
-export const placeRecordSchema = z.object({
-  id: z.string().min(1),
-  tripId: z.string().min(1),
-  dayId: z.string().min(1),
-  name: z.string().min(1, '名称を入力してください').max(120, '名称は120文字以内で入力してください'),
-  category: placeCategorySchema,
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  address: optionalAddress,
-  startTime: timeOfDay,
-  stayMinutes: nonNegativeInt.max(1440, '滞在時間が長すぎます').nullable(),
-  travelMinutes: nonNegativeInt.max(1440, '移動時間が長すぎます').nullable(),
-  memo: z.string().max(2000, 'メモは2000文字以内で入力してください'),
-  url: optionalUrl,
-  estimatedCost: nonNegativeInt.max(100_000_000, '金額が大きすぎます').nullable(),
-  travelMode: travelModeField,
-  travelDistanceMeters: travelDistanceField,
-  travelEstimateSource: travelEstimateSourceField,
-  travelToPlaceId: nullableTrimmedString,
-  travelRouteKey: nullableTrimmedString,
-  travelCalculatedAt: nullableIsoTimestamp,
-  order: nonNegativeInt,
-  createdAt: isoTimestamp,
-  updatedAt: isoTimestamp,
-});
+export const placeRecordSchema = z
+  .object({
+    id: z.string().min(1),
+    tripId: z.string().min(1),
+    dayId: z.string().min(1),
+    name: z
+      .string()
+      .min(1, '名称を入力してください')
+      .max(120, '名称は120文字以内で入力してください'),
+    category: placeCategorySchema,
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    address: optionalAddress,
+    startTime: timeOfDay,
+    stayMinutes: nonNegativeInt.max(1440, '滞在時間が長すぎます').nullable(),
+    travelMinutes: nonNegativeInt.max(1440, '移動時間が長すぎます').nullable(),
+    memo: z.string().max(2000, 'メモは2000文字以内で入力してください'),
+    url: optionalUrl,
+    estimatedCost: nonNegativeInt.max(100_000_000, '金額が大きすぎます').nullable(),
+    travelMode: travelModeField,
+    travelDistanceMeters: travelDistanceField,
+    travelEstimateSource: travelEstimateSourceField,
+    travelToPlaceId: nullableTrimmedString,
+    travelRouteKey: nullableTrimmedString,
+    travelCalculatedAt: nullableIsoTimestamp,
+    order: nonNegativeInt,
+    createdAt: isoTimestamp,
+    updatedAt: isoTimestamp,
+  })
+  .superRefine((place, ctx) => {
+    const autoFields = [
+      place.travelMode,
+      place.travelDistanceMeters,
+      place.travelToPlaceId,
+      place.travelRouteKey,
+      place.travelCalculatedAt,
+    ];
+
+    if (place.travelEstimateSource === 'auto') {
+      if (
+        place.travelMinutes == null ||
+        place.travelMinutes <= 0 ||
+        place.travelMode == null ||
+        place.travelDistanceMeters == null ||
+        place.travelToPlaceId == null ||
+        place.travelRouteKey == null ||
+        place.travelCalculatedAt == null
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '自動移動見積もりの保存状態が不完全です',
+          path: ['travelEstimateSource'],
+        });
+      }
+      return;
+    }
+
+    if (place.travelEstimateSource === 'manual') {
+      if (
+        place.travelMinutes == null ||
+        place.travelMode != null ||
+        place.travelDistanceMeters != null ||
+        place.travelToPlaceId != null ||
+        place.travelRouteKey != null ||
+        place.travelCalculatedAt != null
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          message: '手入力の移動時間に自動見積もりの情報が混在しています',
+          path: ['travelEstimateSource'],
+        });
+      }
+      return;
+    }
+
+    if (autoFields.some((value) => value != null)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: '未設定の移動時間に自動見積もりの情報が残っています',
+        path: ['travelEstimateSource'],
+      });
+    }
+  })
+  .transform((place) =>
+    place.travelEstimateSource === null && place.travelMinutes != null
+      ? { ...place, travelEstimateSource: 'manual' as const }
+      : place,
+  );
 
 // ---------------------------------------------------------------------------
 // Form input schema (trip create / edit)

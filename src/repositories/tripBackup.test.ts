@@ -218,6 +218,9 @@ describe('travel estimates in backups (Phase 2.2)', () => {
         { latitude: b.latitude, longitude: b.longitude },
         'walk',
       ),
+      fromUpdatedAt: a.updatedAt,
+      fromTravelMinutes: a.travelMinutes,
+      fromTravelEstimateSource: a.travelEstimateSource,
       calculatedAt: '2026-06-16T00:00:00.000Z',
     });
     return { trip, a, b };
@@ -275,6 +278,39 @@ describe('travel estimates in backups (Phase 2.2)', () => {
     expect(newA.travelMode).toBeNull();
   });
 
+  it('drops auto metadata when the rewired target is not the actual next place', async () => {
+    const { trip } = await seedLegTrip();
+    const backup = await tripRepository.exportTrip(trip.id);
+    const a = backup.places.find((place) => place.name === 'A')!;
+    const b = backup.places.find((place) => place.name === 'B')!;
+    const corruptTarget = {
+      ...b,
+      id: 'wrong-target',
+      name: 'C',
+      order: 2,
+      travelMinutes: 12,
+      travelEstimateSource: 'manual' as const,
+    };
+
+    const imported = await tripRepository.importBackup({
+      ...backup,
+      places: backup.places
+        .map((place) =>
+          place.id === a.id ? { ...place, travelToPlaceId: corruptTarget.id } : place,
+        )
+        .concat(corruptTarget),
+    });
+
+    const importedPlaces = await placeRepository.listByTrip(imported.id);
+    const newA = importedPlaces.find((place) => place.name === 'A')!;
+    const newC = importedPlaces.find((place) => place.name === 'C')!;
+    expect(newA.travelToPlaceId).not.toBe(newC.id);
+    expect(newA.travelMinutes).toBeNull();
+    expect(newA.travelEstimateSource).toBeNull();
+    expect(newC.travelMinutes).toBe(12);
+    expect(newC.travelEstimateSource).toBe('manual');
+  });
+
   it('loads an old version 1 backup whose places lack the Phase 2.2 fields', async () => {
     const { trip } = await seedLegTrip();
     const backup = await tripRepository.exportTrip(trip.id);
@@ -295,8 +331,8 @@ describe('travel estimates in backups (Phase 2.2)', () => {
     expect(places).toHaveLength(2);
     for (const place of places) {
       expect(place.travelMode).toBeNull();
-      expect(place.travelEstimateSource).toBeNull();
       expect(place.travelToPlaceId).toBeNull();
     }
+    expect(places.find((place) => place.name === 'A')!.travelEstimateSource).toBe('manual');
   });
 });

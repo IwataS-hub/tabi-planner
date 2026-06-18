@@ -19,6 +19,17 @@ class CountingProvider implements RoutingProvider {
   }
 }
 
+class DeferredProvider implements RoutingProvider {
+  calls = 0;
+  resolve!: (value: RouteEstimate) => void;
+  route(_request: RouteRequest): Promise<RouteEstimate> {
+    this.calls += 1;
+    return new Promise((resolve) => {
+      this.resolve = resolve;
+    });
+  }
+}
+
 describe('CachingRoutingService', () => {
   it('serves an identical leg+mode from cache (cache hit)', async () => {
     const provider = new CountingProvider();
@@ -57,5 +68,18 @@ describe('CachingRoutingService', () => {
     await service.route({ from: FROM, to: TO, mode: 'walk' }); // miss again
     expect(provider.calls).toBe(3);
     expect(cache.size).toBe(1);
+  });
+
+  it('shares an in-flight request for the same leg+mode', async () => {
+    const provider = new DeferredProvider();
+    const service = new CachingRoutingService(provider);
+
+    const first = service.route({ from: FROM, to: TO, mode: 'walk' });
+    const second = service.route({ from: FROM, to: TO, mode: 'walk' });
+    expect(provider.calls).toBe(1);
+
+    provider.resolve(estimate());
+    await expect(first).resolves.toEqual(estimate());
+    await expect(second).resolves.toEqual(estimate());
   });
 });

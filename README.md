@@ -137,7 +137,7 @@ VITE_GEOAPIFY_API_KEY=your-geoapify-api-key
 
 ### 公開ビルド（GitHub Actions / Pages）
 
-GitHub Actions の Build ステップは、リポジトリの **Secret `GEOAPIFY_API_KEY`** を `VITE_GEOAPIFY_API_KEY` として読み込みます（[`deploy.yml`](.github/workflows/deploy.yml)）。Secret が未設定でもビルド・デプロイは成功し、検索のみ無効になります。
+GitHub Actions の Build ステップは、リポジトリの **Secret `GEOAPIFY_API_KEY`** を `VITE_GEOAPIFY_API_KEY` として読み込みます（[`deploy.yml`](.github/workflows/deploy.yml)）。Secret が未設定でもビルド・デプロイは成功し、Geoapify 連携（検索・住所補完・ルート計算）のみ無効になります。
 
 > **キーの取り扱いに関する注意**
 >

@@ -55,4 +55,17 @@ describe('routeKey', () => {
     const near = { latitude: 35.000001, longitude: 135.000001 };
     expect(routeKey(from, to, 'walk')).toBe(routeKey(near, to, 'walk'));
   });
+
+  it('normalises -0 and 0 to the same key', () => {
+    expect(routeKey({ latitude: -0, longitude: -0 }, to, 'walk')).toBe(
+      routeKey({ latitude: 0, longitude: 0 }, to, 'walk'),
+    );
+  });
+
+  it('rejects non-finite or out-of-range coordinates', () => {
+    expect(() => routeKey({ latitude: Number.NaN, longitude: 135 }, to, 'walk')).toThrow(
+      RangeError,
+    );
+    expect(() => routeKey({ latitude: 91, longitude: 135 }, to, 'walk')).toThrow(RangeError);
+  });
 });

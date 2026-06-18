@@ -4,6 +4,18 @@ import type { TtlCache } from '@/services/geocoding/geocodingCache';
 import type { FetchLike, RoutingProvider } from './RoutingProvider';
 import { GeoapifyRoutingProvider } from './GeoapifyRoutingProvider';
 import { createRouteCache } from './routingCache';
+import { RoutingError } from './routingErrors';
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new RoutingError('aborted'));
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new RoutingError('aborted')), { once: true });
+    }),
+  ]);
+}
 
 /**
  * Wraps a routing provider with an in-memory cache keyed by leg+mode, so an
@@ -13,6 +25,7 @@ import { createRouteCache } from './routingCache';
 export class CachingRoutingService implements RoutingProvider {
   private readonly provider: RoutingProvider;
   private readonly cache: TtlCache<RouteEstimate>;
+  private readonly inFlight = new Map<string, Promise<RouteEstimate>>();
 
   constructor(provider: RoutingProvider, cache?: TtlCache<RouteEstimate>) {
     this.provider = provider;
@@ -23,9 +36,20 @@ export class CachingRoutingService implements RoutingProvider {
     const key = routeKey(request.from, request.to, request.mode);
     const cached = this.cache.get(key);
     if (cached) return cached;
-    const result = await this.provider.route(request);
-    this.cache.set(key, result);
-    return result;
+    const running = this.inFlight.get(key);
+    if (running) return abortable(running, request.signal);
+
+    const requestPromise = this.provider
+      .route({ from: request.from, to: request.to, mode: request.mode })
+      .then((result) => {
+        this.cache.set(key, result);
+        return result;
+      })
+      .finally(() => {
+        this.inFlight.delete(key);
+      });
+    this.inFlight.set(key, requestPromise);
+    return abortable(requestPromise, request.signal);
   }
 }
 

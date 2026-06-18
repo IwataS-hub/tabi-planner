@@ -5,6 +5,7 @@ import { CURRENT_SCHEMA_VERSION, type Trip, type TripDay } from '@/domain/types'
 import { buildBackup, type TripBackup } from '@/domain/backup';
 import { eachDateInRange } from '@/lib/date';
 import { createId } from '@/lib/utils';
+import { reconcileAutoTravelInDay } from './placeRepository';
 import {
   placeRecordSchema,
   tripDayRecordSchema,
@@ -338,19 +339,26 @@ export const tripRepository = {
           const mappedTarget = place.travelToPlaceId
             ? (placeIdMap.get(place.travelToPlaceId) ?? null)
             : null;
-          const travelFields = mappedTarget
-            ? { travelToPlaceId: mappedTarget }
-            : place.travelEstimateSource === 'auto'
-              ? {
-                  travelMinutes: null,
-                  travelMode: null,
-                  travelDistanceMeters: null,
-                  travelEstimateSource: null,
-                  travelToPlaceId: null,
-                  travelRouteKey: null,
-                  travelCalculatedAt: null,
-                }
-              : { travelToPlaceId: null };
+          const travelFields =
+            place.travelEstimateSource === 'auto' && mappedTarget
+              ? { travelToPlaceId: mappedTarget }
+              : place.travelEstimateSource === 'auto'
+                ? {
+                    travelMinutes: null,
+                    travelMode: null,
+                    travelDistanceMeters: null,
+                    travelEstimateSource: null,
+                    travelToPlaceId: null,
+                    travelRouteKey: null,
+                    travelCalculatedAt: null,
+                  }
+                : {
+                    travelMode: null,
+                    travelDistanceMeters: null,
+                    travelToPlaceId: null,
+                    travelRouteKey: null,
+                    travelCalculatedAt: null,
+                  };
           return validateRecord(
             placeRecordSchema,
             {
@@ -371,6 +379,7 @@ export const tripRepository = {
       await db.trips.add(newTrip);
       await db.days.bulkAdd(newDays);
       if (newPlaces.length > 0) await db.places.bulkAdd(newPlaces);
+      for (const day of newDays) await reconcileAutoTravelInDay(day.id);
       savedTrip = newTrip;
     });
 
