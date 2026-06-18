@@ -1,13 +1,55 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Check, X, Calendar } from 'lucide-react';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { getCategoryMeta } from '@/domain/categories';
-import type { Place } from '@/domain/types';
+import type { Place, VisitStatus } from '@/domain/types';
 import { formatDuration, formatYen } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import type { PlacePatch } from '@/repositories/placeRepository';
 import { PlaceEditor } from './PlaceEditor';
+
+const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
+  planned: '予定',
+  visited: '訪問済',
+  skipped: 'スキップ',
+};
+
+function nextStatus(status: VisitStatus): VisitStatus {
+  if (status === 'planned') return 'visited';
+  if (status === 'visited') return 'skipped';
+  return 'planned';
+}
+
+function VisitStatusBadge({
+  status,
+  onClick,
+}: {
+  status: VisitStatus;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={`訪問状態: ${VISIT_STATUS_LABELS[status]}。クリックで変更`}
+      className={cn(
+        'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors',
+        status === 'visited' && 'bg-green-100 text-green-700',
+        status === 'skipped' && 'bg-neutral-100 text-neutral-500 line-through',
+        status === 'planned' && 'bg-blue-50 text-blue-600',
+      )}
+    >
+      {status === 'visited' && <Check className="size-3" aria-hidden />}
+      {status === 'skipped' && <X className="size-3" aria-hidden />}
+      {status === 'planned' && <Calendar className="size-3" aria-hidden />}
+      {VISIT_STATUS_LABELS[status]}
+    </button>
+  );
+}
 
 interface PlaceListItemProps {
   place: Place;
@@ -18,6 +60,7 @@ interface PlaceListItemProps {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onFocusOnMap: (id: string) => void;
+  onVisitStatusChange?: (id: string, status: VisitStatus) => void;
 }
 
 function summary(place: Place): string {
@@ -37,6 +80,7 @@ export function PlaceListItem({
   onDuplicate,
   onDelete,
   onFocusOnMap,
+  onVisitStatusChange,
 }: PlaceListItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: place.id,
@@ -96,6 +140,12 @@ export function PlaceListItem({
               {meta_line ? `・${meta_line}` : ''}
             </span>
           </span>
+          {onVisitStatusChange ? (
+            <VisitStatusBadge
+              status={place.visitStatus}
+              onClick={() => onVisitStatusChange(place.id, nextStatus(place.visitStatus))}
+            />
+          ) : null}
         </button>
       </div>
 

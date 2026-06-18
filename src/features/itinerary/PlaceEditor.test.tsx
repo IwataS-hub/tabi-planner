@@ -27,6 +27,7 @@ function makePlace(over: Partial<Place> = {}): Place {
     travelToPlaceId: null,
     travelRouteKey: null,
     travelCalculatedAt: null,
+    visitStatus: 'planned',
     order: 0,
     createdAt: ISO,
     updatedAt: ISO,

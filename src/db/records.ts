@@ -1,5 +1,9 @@
 import type { z } from 'zod';
 import type {
+  checklistItemRecordSchema,
+  expenseRecordSchema,
+  expenseShareRecordSchema,
+  participantRecordSchema,
   placeRecordSchema,
   tripDayRecordSchema,
   tripRecordSchema,
@@ -14,3 +18,7 @@ import type {
 export type TripRecord = z.infer<typeof tripRecordSchema>;
 export type TripDayRecord = z.infer<typeof tripDayRecordSchema>;
 export type PlaceRecord = z.infer<typeof placeRecordSchema>;
+export type ParticipantRecord = z.infer<typeof participantRecordSchema>;
+export type ExpenseRecord = z.infer<typeof expenseRecordSchema>;
+export type ExpenseShareRecord = z.infer<typeof expenseShareRecordSchema>;
+export type ChecklistItemRecord = z.infer<typeof checklistItemRecordSchema>;

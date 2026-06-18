@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { PLACE_ADDRESS_MAX_LENGTH, PLACE_CATEGORIES } from '@/domain/types';
+import {
+  EXPENSE_CATEGORIES,
+  CHECKLIST_KINDS,
+  PLACE_ADDRESS_MAX_LENGTH,
+  PLACE_CATEGORIES,
+  VISIT_STATUSES,
+} from '@/domain/types';
 import { TRAVEL_MODES } from '@/domain/routing';
 import { isValidISODate, isValidTime } from '@/lib/date';
 import { isHttpUrl } from '@/lib/utils';
@@ -7,10 +13,6 @@ import { isHttpUrl } from '@/lib/utils';
 /**
  * Zod schemas are the single source of truth for what is allowed to be
  * persisted. Record types in `src/db/records.ts` are inferred from these.
- *
- * URL/date/time validation uses `.refine` with WHATWG primitives rather than
- * Zod's built-in string formats, to stay stable across Zod minor versions and
- * to express exactly the rules this product needs.
  */
 
 const isoDate = z.string().refine(isValidISODate, '日付の形式が正しくありません (YYYY-MM-DD)');
@@ -34,9 +36,7 @@ const nonNegativeInt = z.number().int('整数で入力してください').min(0
 
 /**
  * Optional address. Backward compatible with records that never had the field
- * (missing / null both load as `null`) and with future JSON backups. A
- * whitespace-only value is normalised to `null`; the length cap is checked
- * after trimming.
+ * (missing / null both load as `null`) and with future JSON backups.
  */
 const optionalAddress = z
   .string()
@@ -52,11 +52,6 @@ const optionalAddress = z
       .nullable(),
   );
 
-/**
- * Optional travel-estimate fields (Phase 2.2). All are nullish so records and
- * JSON backups written before they existed still load; absent/blank values
- * normalise to `null`.
- */
 const nullableTrimmedString = z
   .string()
   .nullish()
@@ -89,7 +84,12 @@ const nullableIsoTimestamp = z
   .nullish()
   .transform((value) => value ?? null);
 
+const nullableIsoDate = isoDate.nullish().transform((value) => value ?? null);
+
 export const placeCategorySchema = z.enum(PLACE_CATEGORIES);
+export const visitStatusSchema = z.enum(VISIT_STATUSES);
+export const expenseCategorySchema = z.enum(EXPENSE_CATEGORIES);
+export const checklistKindSchema = z.enum(CHECKLIST_KINDS);
 
 // ---------------------------------------------------------------------------
 // Persistence record schemas
@@ -105,6 +105,8 @@ export const tripRecordSchema = z
     description: z.string().max(400, '概要は400文字以内で入力してください'),
     startDate: isoDate,
     endDate: isoDate,
+    /** Optional trip-level budget in integer yen. Nullish for backward compat. */
+    budgetYen: nonNegativeInt.max(1_000_000_000, '予算が大きすぎます').nullish().transform((v) => v ?? null),
     createdAt: isoTimestamp,
     updatedAt: isoTimestamp,
     schemaVersion: z.number().int().min(1),
@@ -140,6 +142,8 @@ export const placeRecordSchema = z
     memo: z.string().max(2000, 'メモは2000文字以内で入力してください'),
     url: optionalUrl,
     estimatedCost: nonNegativeInt.max(100_000_000, '金額が大きすぎます').nullable(),
+    /** Nullish for backward compat with records written before Phase 2.3. */
+    visitStatus: visitStatusSchema.nullish().transform((v) => v ?? null),
     travelMode: travelModeField,
     travelDistanceMeters: travelDistanceField,
     travelEstimateSource: travelEstimateSourceField,
@@ -151,10 +155,6 @@ export const placeRecordSchema = z
     updatedAt: isoTimestamp,
   })
   .superRefine((place, ctx) => {
-    // `travelMode === 'transit'` may exist WITHOUT an auto estimate: transit is
-    // chosen by the user and routed externally (Google Maps), never auto-
-    // estimated. Every other auto-only field stays null unless source is 'auto',
-    // and only 'transit' may appear as a non-auto mode label.
     const autoOnlyFields = [
       place.travelDistanceMeters,
       place.travelToPlaceId,
@@ -210,6 +210,64 @@ export const placeRecordSchema = z
       ? { ...place, travelEstimateSource: 'manual' as const }
       : place,
   );
+
+// ---------------------------------------------------------------------------
+// Phase 2.3 record schemas
+// ---------------------------------------------------------------------------
+
+export const participantRecordSchema = z.object({
+  id: z.string().min(1),
+  tripId: z.string().min(1),
+  name: z
+    .string()
+    .min(1, '参加者名を入力してください')
+    .max(60, '参加者名は60文字以内で入力してください'),
+  order: nonNegativeInt,
+  createdAt: isoTimestamp,
+  updatedAt: isoTimestamp,
+});
+
+export const expenseRecordSchema = z.object({
+  id: z.string().min(1),
+  tripId: z.string().min(1),
+  dayId: z.string().min(1).nullish().transform((v) => v ?? null),
+  placeId: z.string().min(1).nullish().transform((v) => v ?? null),
+  title: z
+    .string()
+    .min(1, '費用の名称を入力してください')
+    .max(120, '費用の名称は120文字以内で入力してください'),
+  amountYen: nonNegativeInt.max(100_000_000, '金額が大きすぎます'),
+  category: expenseCategorySchema,
+  payerId: z.string().min(1),
+  occurredAt: nullableIsoDate,
+  memo: z.string().max(1000, 'メモは1000文字以内で入力してください'),
+  createdAt: isoTimestamp,
+  updatedAt: isoTimestamp,
+});
+
+export const expenseShareRecordSchema = z.object({
+  id: z.string().min(1),
+  expenseId: z.string().min(1),
+  participantId: z.string().min(1),
+  amountYen: nonNegativeInt.max(100_000_000, '金額が大きすぎます'),
+});
+
+export const checklistItemRecordSchema = z.object({
+  id: z.string().min(1),
+  tripId: z.string().min(1),
+  kind: checklistKindSchema,
+  title: z
+    .string()
+    .min(1, 'タイトルを入力してください')
+    .max(120, 'タイトルは120文字以内で入力してください'),
+  completed: z.boolean(),
+  assigneeId: z.string().min(1).nullish().transform((v) => v ?? null),
+  dueAt: nullableIsoDate,
+  category: z.string().max(60, 'カテゴリは60文字以内で入力してください'),
+  order: nonNegativeInt,
+  createdAt: isoTimestamp,
+  updatedAt: isoTimestamp,
+});
 
 // ---------------------------------------------------------------------------
 // Form input schema (trip create / edit)
