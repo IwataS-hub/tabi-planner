@@ -106,7 +106,10 @@ export const tripRecordSchema = z
     startDate: isoDate,
     endDate: isoDate,
     /** Optional trip-level budget in integer yen. Nullish for backward compat. */
-    budgetYen: nonNegativeInt.max(1_000_000_000, '予算が大きすぎます').nullish().transform((v) => v ?? null),
+    budgetYen: nonNegativeInt
+      .max(1_000_000_000, '予算が大きすぎます')
+      .nullish()
+      .transform((v) => v ?? null),
     createdAt: isoTimestamp,
     updatedAt: isoTimestamp,
     schemaVersion: z.number().int().min(1),
@@ -230,8 +233,16 @@ export const participantRecordSchema = z.object({
 export const expenseRecordSchema = z.object({
   id: z.string().min(1),
   tripId: z.string().min(1),
-  dayId: z.string().min(1).nullish().transform((v) => v ?? null),
-  placeId: z.string().min(1).nullish().transform((v) => v ?? null),
+  dayId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
+  placeId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
   title: z
     .string()
     .min(1, '費用の名称を入力してください')
@@ -261,7 +272,11 @@ export const checklistItemRecordSchema = z.object({
     .min(1, 'タイトルを入力してください')
     .max(120, 'タイトルは120文字以内で入力してください'),
   completed: z.boolean(),
-  assigneeId: z.string().min(1).nullish().transform((v) => v ?? null),
+  assigneeId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
   dueAt: nullableIsoDate,
   category: z.string().max(60, 'カテゴリは60文字以内で入力してください'),
   order: nonNegativeInt,

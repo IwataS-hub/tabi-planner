@@ -69,9 +69,10 @@ export const expenseRepository = {
   async listByTrip(tripId: string): Promise<ExpenseWithShares[]> {
     const expenses = await db.expenses.where('tripId').equals(tripId).toArray();
     const expenseIds = expenses.map((e) => e.id);
-    const allShares = expenseIds.length > 0
-      ? await db.expenseShares.where('expenseId').anyOf(expenseIds).toArray()
-      : [];
+    const allShares =
+      expenseIds.length > 0
+        ? await db.expenseShares.where('expenseId').anyOf(expenseIds).toArray()
+        : [];
     const sharesByExpense = new Map<string, ExpenseShareRecord[]>();
     for (const share of allShares) {
       const list = sharesByExpense.get(share.expenseId) ?? [];
@@ -124,10 +125,7 @@ export const expenseRepository = {
   },
 
   /** Update expense and replace its shares atomically. */
-  async update(
-    id: string,
-    patch: Omit<ExpenseDraft, 'tripId'>,
-  ): Promise<ExpenseWithShares> {
+  async update(id: string, patch: Omit<ExpenseDraft, 'tripId'>): Promise<ExpenseWithShares> {
     let saved: ExpenseRecord | undefined;
     let savedShares: ExpenseShareRecord[] = [];
     await db.transaction('rw', db.expenses, db.expenseShares, async () => {

@@ -9,7 +9,12 @@ interface TripNavProps {
 const tabs = [
   { to: (id: string) => `/trips/${id}`, label: '旅程', icon: ListChecks, exact: true },
   { to: (id: string) => `/trips/${id}/money`, label: 'お金', icon: Wallet, exact: false },
-  { to: (id: string) => `/trips/${id}/checklists`, label: 'チェック', icon: CheckSquare, exact: false },
+  {
+    to: (id: string) => `/trips/${id}/checklists`,
+    label: 'チェック',
+    icon: CheckSquare,
+    exact: false,
+  },
 ] as const;
 
 export function TripNav({ tripId }: TripNavProps) {

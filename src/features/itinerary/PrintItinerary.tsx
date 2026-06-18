@@ -1,8 +1,22 @@
 import { getCategoryMeta } from '@/domain/categories';
 import { formatDistanceMeters, TRAVEL_MODE_LABELS } from '@/domain/routing';
 import { summarizeDay } from '@/domain/summary';
-import { computeBudgetSummary, computeSettlement, computeBalances, summarizeByCategory } from '@/domain/settlement';
-import type { ChecklistItem, Expense, ExpenseShare, Participant, Place, Trip, TripDay, VisitStatus } from '@/domain/types';
+import {
+  computeBudgetSummary,
+  computeSettlement,
+  computeBalances,
+  summarizeByCategory,
+} from '@/domain/settlement';
+import type {
+  ChecklistItem,
+  Expense,
+  ExpenseShare,
+  Participant,
+  Place,
+  Trip,
+  TripDay,
+  VisitStatus,
+} from '@/domain/types';
 import { dayCount, formatDuration, formatJaDate, formatJaDateRange, formatYen } from '@/lib/date';
 import { APP } from '@/config/app';
 
@@ -64,7 +78,8 @@ export function PrintItinerary({
   }
 
   const budgetSummary = computeBudgetSummary(trip.budgetYen, expenses);
-  const balances = participants.length > 0 ? computeBalances(participants, expenses, expenseShares) : [];
+  const balances =
+    participants.length > 0 ? computeBalances(participants, expenses, expenseShares) : [];
   const settlement = computeSettlement(balances);
   const categorySummaries = summarizeByCategory(expenses);
   const incompleteItems = checklistItems.filter((item) => !item.completed);
@@ -81,8 +96,7 @@ export function PrintItinerary({
         </p>
         {trip.budgetYen != null && (
           <p className="mt-0.5 text-sm text-neutral-700">
-            予算: {formatYen(trip.budgetYen)} /
-            合計支出: {formatYen(budgetSummary.spentYen)}
+            予算: {formatYen(trip.budgetYen)} / 合計支出: {formatYen(budgetSummary.spentYen)}
             {budgetSummary.overBudget && ` （${formatYen(-budgetSummary.remainingYen!)}超過）`}
           </p>
         )}
@@ -104,8 +118,7 @@ export function PrintItinerary({
                 </span>
               </h2>
               <p className="text-[11px] text-neutral-700">
-                スポット{summary.placeCount}件
-                {visitedCount > 0 && `・訪問${visitedCount}件`}
+                スポット{summary.placeCount}件{visitedCount > 0 && `・訪問${visitedCount}件`}
                 {skippedCount > 0 && `・スキップ${skippedCount}件`}
                 ・滞在{formatDuration(summary.totalStayMinutes)}
                 ・移動{formatDuration(summary.totalTravelMinutes)}
@@ -161,11 +174,15 @@ export function PrintItinerary({
       {/* Expense summary */}
       {expenses.length > 0 && (
         <section className="mb-5 break-inside-avoid">
-          <h2 className="mb-2 border-b border-neutral-400 pb-1 text-base font-bold">費用サマリー</h2>
+          <h2 className="mb-2 border-b border-neutral-400 pb-1 text-base font-bold">
+            費用サマリー
+          </h2>
           <dl className="space-y-1 text-sm">
             {categorySummaries.map(({ category, totalYen }) => (
               <div key={category} className="flex justify-between">
-                <dt className="text-neutral-600">{EXPENSE_CATEGORY_LABELS[category] ?? category}</dt>
+                <dt className="text-neutral-600">
+                  {EXPENSE_CATEGORY_LABELS[category] ?? category}
+                </dt>
                 <dd>{formatYen(totalYen)}</dd>
               </div>
             ))}
@@ -194,7 +211,9 @@ export function PrintItinerary({
       {/* Incomplete checklist items */}
       {incompleteItems.length > 0 && (
         <section className="mb-5 break-inside-avoid">
-          <h2 className="mb-2 border-b border-neutral-400 pb-1 text-base font-bold">未完了チェックリスト</h2>
+          <h2 className="mb-2 border-b border-neutral-400 pb-1 text-base font-bold">
+            未完了チェックリスト
+          </h2>
           <ul className="space-y-0.5 text-sm">
             {incompleteItems.map((item) => (
               <li key={item.id} className="flex items-start gap-2">

@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  fetchTripWeather,
-  setWeatherProvider,
-  representativeCoordinate,
-} from './weatherService';
+import { fetchTripWeather, setWeatherProvider, representativeCoordinate } from './weatherService';
 import { clearWeatherCache } from './weatherCache';
 import { WeatherError } from './weatherErrors';
 import type { TripWeather } from '@/domain/weather';

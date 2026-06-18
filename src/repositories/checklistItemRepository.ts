@@ -107,10 +107,7 @@ export const checklistItemRepository = {
   },
 
   async reorder(tripId: string, kind: ChecklistKind, orderedIds: string[]): Promise<void> {
-    const records = await db.checklistItems
-      .where('tripId')
-      .equals(tripId)
-      .toArray();
+    const records = await db.checklistItems.where('tripId').equals(tripId).toArray();
     const byId = new Map(records.map((r) => [r.id, r]));
     const updates: ChecklistItemRecord[] = [];
     orderedIds.forEach((id, index) => {
@@ -133,9 +130,7 @@ export const checklistItemRepository = {
   ): Promise<ChecklistItem[]> {
     const existing = await checklistItemRepository.listIncomplete(tripId, kind);
     const existingTitles = new Set(existing.map((item) => item.title.toLowerCase()));
-    const toAdd = suggestions.filter(
-      (s) => !existingTitles.has(s.title.toLowerCase()),
-    );
+    const toAdd = suggestions.filter((s) => !existingTitles.has(s.title.toLowerCase()));
     const added: ChecklistItem[] = [];
     for (const s of toAdd) {
       const item = await checklistItemRepository.add({

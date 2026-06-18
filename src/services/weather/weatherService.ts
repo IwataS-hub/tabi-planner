@@ -72,7 +72,10 @@ export async function fetchTripWeather(
 ): Promise<TripWeather | null> {
   // Check that at least some dates are in forecast range
   if (!isDateInForecastRange(startDate, today) && !isDateInForecastRange(endDate, today)) {
-    throw new WeatherError('out-of-range', '旅行日程が天気予報の範囲外です（現在から16日以内の日程のみ対応）');
+    throw new WeatherError(
+      'out-of-range',
+      '旅行日程が天気予報の範囲外です（現在から16日以内の日程のみ対応）',
+    );
   }
 
   // Clamp to forecast range

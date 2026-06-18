@@ -79,7 +79,14 @@ export function MoneyPage() {
   if (trip.status === 'error' || !trip.data) {
     return (
       <PageShell>
-        <ErrorView title="旅行が見つかりません" action={<Button asChild variant="outline" size="sm"><Link to="/">一覧へ戻る</Link></Button>} />
+        <ErrorView
+          title="旅行が見つかりません"
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to="/">一覧へ戻る</Link>
+            </Button>
+          }
+        />
       </PageShell>
     );
   }
@@ -149,10 +156,16 @@ export function MoneyPage() {
                     placeholder="予算（円）"
                     className="flex-1"
                     autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveBudget(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleSaveBudget();
+                    }}
                   />
-                  <Button size="sm" onClick={() => void handleSaveBudget()}>保存</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditingBudget(false)}>キャンセル</Button>
+                  <Button size="sm" onClick={() => void handleSaveBudget()}>
+                    保存
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingBudget(false)}>
+                    キャンセル
+                  </Button>
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
@@ -162,17 +175,21 @@ export function MoneyPage() {
                       {tripData.budgetYen != null ? formatYen(tripData.budgetYen) : '未設定'}
                     </p>
                     {tripData.budgetYen != null && (
-                      <p className={`text-xs ${budgetSummary.overBudget ? 'text-red-600' : 'text-green-600'}`}>
-                        支出 {formatYen(budgetSummary.spentYen)} /
-                        残り {budgetSummary.remainingYen != null
-                          ? (budgetSummary.overBudget
-                              ? `${formatYen(-budgetSummary.remainingYen)} オーバー`
-                              : formatYen(budgetSummary.remainingYen))
+                      <p
+                        className={`text-xs ${budgetSummary.overBudget ? 'text-red-600' : 'text-green-600'}`}
+                      >
+                        支出 {formatYen(budgetSummary.spentYen)} / 残り{' '}
+                        {budgetSummary.remainingYen != null
+                          ? budgetSummary.overBudget
+                            ? `${formatYen(-budgetSummary.remainingYen)} オーバー`
+                            : formatYen(budgetSummary.remainingYen)
                           : '—'}
                       </p>
                     )}
                     {tripData.budgetYen == null && allExpenses.length > 0 && (
-                      <p className="text-ink-soft text-xs">合計支出 {formatYen(budgetSummary.spentYen)}</p>
+                      <p className="text-ink-soft text-xs">
+                        合計支出 {formatYen(budgetSummary.spentYen)}
+                      </p>
                     )}
                   </div>
                   <Button
@@ -183,7 +200,7 @@ export function MoneyPage() {
                       setEditingBudget(true);
                     }}
                   >
-                    <Pencil className="size-3.5 mr-1" aria-hidden />
+                    <Pencil className="mr-1 size-3.5" aria-hidden />
                     {tripData.budgetYen != null ? '変更' : '設定'}
                   </Button>
                 </div>
@@ -199,7 +216,7 @@ export function MoneyPage() {
                 参加者 ({participantList.length}人)
               </h2>
               <Button size="sm" variant="outline" onClick={() => setAddingParticipant(true)}>
-                <Plus className="size-3.5 mr-1" aria-hidden />
+                <Plus className="mr-1 size-3.5" aria-hidden />
                 追加
               </Button>
             </div>
@@ -212,10 +229,27 @@ export function MoneyPage() {
                   onChange={(e) => setNewParticipantName(e.target.value)}
                   placeholder="参加者名"
                   className="flex-1"
-                  onKeyDown={(e) => { if (e.key === 'Enter') void handleAddParticipant(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleAddParticipant();
+                  }}
                 />
-                <Button size="sm" onClick={() => void handleAddParticipant()} disabled={!newParticipantName.trim()}>追加</Button>
-                <Button size="sm" variant="ghost" onClick={() => { setAddingParticipant(false); setNewParticipantName(''); }}>キャンセル</Button>
+                <Button
+                  size="sm"
+                  onClick={() => void handleAddParticipant()}
+                  disabled={!newParticipantName.trim()}
+                >
+                  追加
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setAddingParticipant(false);
+                    setNewParticipantName('');
+                  }}
+                >
+                  キャンセル
+                </Button>
               </div>
             )}
 
@@ -226,11 +260,16 @@ export function MoneyPage() {
                 {participantList.map((p) => {
                   const bal = balances.find((b) => b.participantId === p.id);
                   return (
-                    <li key={p.id} className="bg-card flex items-center justify-between rounded-xl border px-3 py-2">
+                    <li
+                      key={p.id}
+                      className="bg-card flex items-center justify-between rounded-xl border px-3 py-2"
+                    >
                       <div>
                         <span className="text-foreground text-sm font-medium">{p.name}</span>
                         {bal && (
-                          <span className={`ml-2 text-xs ${bal.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span
+                            className={`ml-2 text-xs ${bal.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                          >
                             {formatYenSigned(bal.balance)}
                           </span>
                         )}
@@ -241,7 +280,7 @@ export function MoneyPage() {
                         aria-label={`${p.name}を削除`}
                         onClick={() => void handleRemoveParticipant(p.id)}
                       >
-                        <Trash2 className="size-3.5 text-destructive" aria-hidden />
+                        <Trash2 className="text-destructive size-3.5" aria-hidden />
                       </Button>
                     </li>
                   );
@@ -263,7 +302,7 @@ export function MoneyPage() {
                 onClick={() => setAddingExpense(true)}
                 disabled={participantList.length === 0}
               >
-                <Plus className="size-3.5 mr-1" aria-hidden />
+                <Plus className="mr-1 size-3.5" aria-hidden />
                 追加
               </Button>
             </div>
@@ -298,9 +337,21 @@ export function MoneyPage() {
                           participants={participantList}
                           tripId={tripId!}
                           days={days.data ?? []}
-                          initial={{ expense, shares: shares.map((s) => ({ participantId: s.participantId, amountYen: s.amountYen })) }}
+                          initial={{
+                            expense,
+                            shares: shares.map((s) => ({
+                              participantId: s.participantId,
+                              amountYen: s.amountYen,
+                            })),
+                          }}
                           onSave={async (draft) => {
-                            await track(() => expenseRepository.update(expense.id, { ...draft, dayId: draft.dayId ?? null, placeId: draft.placeId ?? null }));
+                            await track(() =>
+                              expenseRepository.update(expense.id, {
+                                ...draft,
+                                dayId: draft.dayId ?? null,
+                                placeId: draft.placeId ?? null,
+                              }),
+                            );
                             setEditingExpenseId(null);
                           }}
                           onCancel={() => setEditingExpenseId(null)}
@@ -310,18 +361,29 @@ export function MoneyPage() {
                           <div className="min-w-0 flex-1">
                             <p className="text-foreground font-medium">{expense.title}</p>
                             <p className="text-ink-soft text-xs">
-                              {CATEGORY_LABELS[expense.category]} ·{' '}
-                              {payer?.name ?? '?'}が支払い ·{' '}
+                              {CATEGORY_LABELS[expense.category]} · {payer?.name ?? '?'}が支払い ·{' '}
                               {formatYen(expense.amountYen)}
                             </p>
-                            {expense.memo && <p className="text-ink-soft mt-0.5 text-xs">{expense.memo}</p>}
+                            {expense.memo && (
+                              <p className="text-ink-soft mt-0.5 text-xs">{expense.memo}</p>
+                            )}
                           </div>
                           <div className="flex shrink-0 gap-1">
-                            <Button size="icon-sm" variant="ghost" aria-label="編集" onClick={() => setEditingExpenseId(expense.id)}>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label="編集"
+                              onClick={() => setEditingExpenseId(expense.id)}
+                            >
                               <Pencil className="size-3.5" aria-hidden />
                             </Button>
-                            <Button size="icon-sm" variant="ghost" aria-label="削除" onClick={() => setDeleteExpenseId(expense.id)}>
-                              <Trash2 className="size-3.5 text-destructive" aria-hidden />
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label="削除"
+                              onClick={() => setDeleteExpenseId(expense.id)}
+                            >
+                              <Trash2 className="text-destructive size-3.5" aria-hidden />
                             </Button>
                           </div>
                         </div>
@@ -341,7 +403,9 @@ export function MoneyPage() {
                 <dl className="space-y-1">
                   {categorySummaries.map(({ category, totalYen }) => (
                     <div key={category} className="flex justify-between text-sm">
-                      <dt className="text-ink-soft">{CATEGORY_LABELS[category as ExpenseCategory] ?? category}</dt>
+                      <dt className="text-ink-soft">
+                        {CATEGORY_LABELS[category as ExpenseCategory] ?? category}
+                      </dt>
                       <dd className="text-foreground font-medium">{formatYen(totalYen)}</dd>
                     </div>
                   ))}
@@ -360,11 +424,16 @@ export function MoneyPage() {
               <h2 className="text-foreground mb-2 text-sm font-semibold">精算提案</h2>
               <ul className="space-y-2">
                 {settlement.map((transfer, index) => (
-                  <li key={index} className="bg-card flex items-center gap-2 rounded-xl border px-3 py-2 text-sm">
+                  <li
+                    key={index}
+                    className="bg-card flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                  >
                     <span className="text-foreground font-medium">{transfer.fromName}</span>
-                    <ArrowRight className="size-3.5 text-ink-soft shrink-0" aria-hidden />
+                    <ArrowRight className="text-ink-soft size-3.5 shrink-0" aria-hidden />
                     <span className="text-foreground font-medium">{transfer.toName}</span>
-                    <span className="ml-auto text-red-600 font-bold">{formatYen(transfer.amountYen)}</span>
+                    <span className="ml-auto font-bold text-red-600">
+                      {formatYen(transfer.amountYen)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -375,7 +444,9 @@ export function MoneyPage() {
 
       <ConfirmDialog
         open={deleteExpenseId !== null}
-        onOpenChange={(open) => { if (!open) setDeleteExpenseId(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteExpenseId(null);
+        }}
         title="費用を削除しますか？"
         description="この費用と分担データが削除されます。"
         confirmLabel="削除"
@@ -398,7 +469,16 @@ interface ExpenseFormProps {
   tripId: string;
   days: { id: string; date: string }[];
   initial?: {
-    expense: { title: string; amountYen: number; category: ExpenseCategory; payerId: string; dayId: string | null; placeId: string | null; occurredAt: string | null; memo: string };
+    expense: {
+      title: string;
+      amountYen: number;
+      category: ExpenseCategory;
+      payerId: string;
+      dayId: string | null;
+      placeId: string | null;
+      occurredAt: string | null;
+      memo: string;
+    };
     shares: ShareInput[];
   };
   onSave: (draft: ExpenseDraft) => Promise<void>;
@@ -410,12 +490,15 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
   const [title, setTitle] = useState(initial?.expense.title ?? '');
   const [amountStr, setAmountStr] = useState(initial?.expense.amountYen.toString() ?? '');
   const [category, setCategory] = useState<ExpenseCategory>(initial?.expense.category ?? 'other');
-  const [payerId, setPayerId] = useState(initial?.expense.payerId ?? (participants[0]?.id ?? ''));
+  const [payerId, setPayerId] = useState(initial?.expense.payerId ?? participants[0]?.id ?? '');
   const [dayId, setDayId] = useState<string>(initial?.expense.dayId ?? '');
   const [memo, setMemo] = useState(initial?.expense.memo ?? '');
   const [splitMode, setSplitMode] = useState<'equal' | 'custom'>('equal');
-  const [customShares, setCustomShares] = useState<Record<string, string>>(
-    () => Object.fromEntries(initial?.shares.map((s) => [s.participantId, s.amountYen.toString()]) ?? participants.map((p) => [p.id, '0'])),
+  const [customShares, setCustomShares] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      initial?.shares.map((s) => [s.participantId, s.amountYen.toString()]) ??
+        participants.map((p) => [p.id, '0']),
+    ),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -439,7 +522,9 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
       return;
     }
     if (splitMode === 'custom' && shareTotal !== amount) {
-      setError(`分担合計（${formatYen(shareTotal)}）が費用額（${formatYen(amount)}）と一致しません`);
+      setError(
+        `分担合計（${formatYen(shareTotal)}）が費用額（${formatYen(amount)}）と一致しません`,
+      );
       return;
     }
     setSaving(true);
@@ -468,20 +553,36 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
       {error && <p className="text-destructive text-xs">{error}</p>}
       <div className="space-y-1">
         <Label htmlFor={`${fieldId}-title`}>名称</Label>
-        <Input id={`${fieldId}-title`} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：夕食" />
+        <Input
+          id={`${fieldId}-title`}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="例：夕食"
+        />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label htmlFor={`${fieldId}-amount`}>金額（円）</Label>
-          <Input id={`${fieldId}-amount`} type="number" inputMode="numeric" min={0} value={amountStr} onChange={(e) => setAmountStr(e.target.value)} />
+          <Input
+            id={`${fieldId}-amount`}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
+          />
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${fieldId}-category`}>カテゴリ</Label>
           <Select value={category} onValueChange={(v) => setCategory(v as ExpenseCategory)}>
-            <SelectTrigger id={`${fieldId}-category`}><SelectValue /></SelectTrigger>
+            <SelectTrigger id={`${fieldId}-category`}>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {EXPENSE_CATEGORIES.map((cat) => (
-                <SelectItem key={cat} value={cat}>{CATEGORY_LABELS[cat]}</SelectItem>
+                <SelectItem key={cat} value={cat}>
+                  {CATEGORY_LABELS[cat]}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -490,9 +591,15 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
       <div className="space-y-1">
         <Label htmlFor={`${fieldId}-payer`}>支払者</Label>
         <Select value={payerId} onValueChange={setPayerId}>
-          <SelectTrigger id={`${fieldId}-payer`}><SelectValue placeholder="選択してください" /></SelectTrigger>
+          <SelectTrigger id={`${fieldId}-payer`}>
+            <SelectValue placeholder="選択してください" />
+          </SelectTrigger>
           <SelectContent>
-            {participants.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            {participants.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -500,10 +607,16 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
         <div className="space-y-1">
           <Label htmlFor={`${fieldId}-day`}>日付（任意）</Label>
           <Select value={dayId} onValueChange={setDayId}>
-            <SelectTrigger id={`${fieldId}-day`}><SelectValue placeholder="指定なし" /></SelectTrigger>
+            <SelectTrigger id={`${fieldId}-day`}>
+              <SelectValue placeholder="指定なし" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="">指定なし</SelectItem>
-              {days.map((d) => <SelectItem key={d.id} value={d.id}>{d.date}</SelectItem>)}
+              {days.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.date}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -515,13 +628,17 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
           <button
             type="button"
             onClick={() => setSplitMode('equal')}
-            className={`rounded px-2 py-1 text-xs ${splitMode === 'equal' ? 'bg-primary text-primary-foreground' : 'border text-ink-soft'}`}
-          >均等割り</button>
+            className={`rounded px-2 py-1 text-xs ${splitMode === 'equal' ? 'bg-primary text-primary-foreground' : 'text-ink-soft border'}`}
+          >
+            均等割り
+          </button>
           <button
             type="button"
             onClick={() => setSplitMode('custom')}
-            className={`rounded px-2 py-1 text-xs ${splitMode === 'custom' ? 'bg-primary text-primary-foreground' : 'border text-ink-soft'}`}
-          >カスタム</button>
+            className={`rounded px-2 py-1 text-xs ${splitMode === 'custom' ? 'bg-primary text-primary-foreground' : 'text-ink-soft border'}`}
+          >
+            カスタム
+          </button>
         </div>
         <div className="mt-1 space-y-1">
           {participants.map((p) => {
@@ -535,11 +652,15 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
                     inputMode="numeric"
                     min={0}
                     value={customShares[p.id] ?? '0'}
-                    onChange={(e) => setCustomShares((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    onChange={(e) =>
+                      setCustomShares((prev) => ({ ...prev, [p.id]: e.target.value }))
+                    }
                     className="h-7 w-24 text-xs"
                   />
                 ) : (
-                  <span className="text-foreground text-xs">{formatYen(share?.amountYen ?? 0)}</span>
+                  <span className="text-foreground text-xs">
+                    {formatYen(share?.amountYen ?? 0)}
+                  </span>
                 )}
               </div>
             );
@@ -548,11 +669,20 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
       </div>
       <div className="space-y-1">
         <Label htmlFor={`${fieldId}-memo`}>メモ（任意）</Label>
-        <Input id={`${fieldId}-memo`} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="メモ" />
+        <Input
+          id={`${fieldId}-memo`}
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="メモ"
+        />
       </div>
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => void handleSubmit()} disabled={saving}>保存</Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>キャンセル</Button>
+        <Button size="sm" onClick={() => void handleSubmit()} disabled={saving}>
+          保存
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          キャンセル
+        </Button>
       </div>
     </div>
   );

@@ -47,12 +47,16 @@ describe('computeBalances', () => {
 
   it('single expense paid by p1, split equally', () => {
     const expense = makeExpense({ id: 'e1', payerId: 'p1', amountYen: 900 });
-    const shares = [makeShare('e1', 'p1', 300), makeShare('e1', 'p2', 300), makeShare('e1', 'p3', 300)];
+    const shares = [
+      makeShare('e1', 'p1', 300),
+      makeShare('e1', 'p2', 300),
+      makeShare('e1', 'p3', 300),
+    ];
     const balances = computeBalances([p1, p2, p3], [expense], shares);
     const alice = balances.find((b) => b.participantId === 'p1')!;
     const bob = balances.find((b) => b.participantId === 'p2')!;
     const carol = balances.find((b) => b.participantId === 'p3')!;
-    expect(alice.balance).toBe(600);  // paid 900, owes 300 → +600
+    expect(alice.balance).toBe(600); // paid 900, owes 300 → +600
     expect(bob.balance).toBe(-300);
     expect(carol.balance).toBe(-300);
   });
@@ -77,7 +81,11 @@ describe('computeSettlement', () => {
 
   it('handles three-person split correctly', () => {
     const expense = makeExpense({ id: 'e1', payerId: 'p1', amountYen: 900 });
-    const shares = [makeShare('e1', 'p1', 300), makeShare('e1', 'p2', 300), makeShare('e1', 'p3', 300)];
+    const shares = [
+      makeShare('e1', 'p1', 300),
+      makeShare('e1', 'p2', 300),
+      makeShare('e1', 'p3', 300),
+    ];
     const balances = computeBalances([p1, p2, p3], [expense], shares);
     const settlement = computeSettlement(balances);
     expect(settlement).toHaveLength(2);
@@ -89,8 +97,12 @@ describe('computeSettlement', () => {
     const e1 = makeExpense({ id: 'e1', payerId: 'p1', amountYen: 1200 });
     const e2 = makeExpense({ id: 'e2', payerId: 'p2', amountYen: 600 });
     const shares = [
-      makeShare('e1', 'p1', 400), makeShare('e1', 'p2', 400), makeShare('e1', 'p3', 400),
-      makeShare('e2', 'p1', 200), makeShare('e2', 'p2', 200), makeShare('e2', 'p3', 200),
+      makeShare('e1', 'p1', 400),
+      makeShare('e1', 'p2', 400),
+      makeShare('e1', 'p3', 400),
+      makeShare('e2', 'p1', 200),
+      makeShare('e2', 'p2', 200),
+      makeShare('e2', 'p3', 200),
     ];
     const balances = computeBalances([p1, p2, p3], [e1, e2], shares);
     const creditorTotal = balances.filter((b) => b.balance > 0).reduce((s, b) => s + b.balance, 0);

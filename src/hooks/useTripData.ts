@@ -3,7 +3,14 @@ import { tripRepository, type TripListItem } from '@/repositories/tripRepository
 import { participantRepository } from '@/repositories/participantRepository';
 import { expenseRepository, type ExpenseWithShares } from '@/repositories/expenseRepository';
 import { checklistItemRepository } from '@/repositories/checklistItemRepository';
-import type { ChecklistItem, ChecklistKind, Participant, Place, Trip, TripDay } from '@/domain/types';
+import type {
+  ChecklistItem,
+  ChecklistKind,
+  Participant,
+  Place,
+  Trip,
+  TripDay,
+} from '@/domain/types';
 import { useLiveQueryResult, type LiveResult } from './useLiveQueryResult';
 
 /** Reactive list of trip summaries for the trip list screen. */

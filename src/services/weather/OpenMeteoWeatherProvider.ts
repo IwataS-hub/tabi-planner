@@ -62,11 +62,12 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
     } catch (err) {
       clearTimeout(timeoutId);
       if (err instanceof DOMException && err.name === 'AbortError') {
-        const isTimeout =
-          controller.signal.aborted && controller.signal.reason === 'timeout';
+        const isTimeout = controller.signal.aborted && controller.signal.reason === 'timeout';
         throw new WeatherError(
           isTimeout ? 'timeout' : 'aborted',
-          isTimeout ? '天気情報の取得がタイムアウトしました' : '天気情報の取得がキャンセルされました',
+          isTimeout
+            ? '天気情報の取得がタイムアウトしました'
+            : '天気情報の取得がキャンセルされました',
           err,
         );
       }

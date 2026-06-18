@@ -237,7 +237,15 @@ export const tripRepository = {
   async remove(id: string): Promise<void> {
     await db.transaction(
       'rw',
-      [db.trips, db.days, db.places, db.participants, db.expenses, db.expenseShares, db.checklistItems],
+      [
+        db.trips,
+        db.days,
+        db.places,
+        db.participants,
+        db.expenses,
+        db.expenseShares,
+        db.checklistItems,
+      ],
       async () => {
         // Delete expense shares for all expenses in this trip
         const expenses = await db.expenses.where('tripId').equals(id).toArray();
@@ -289,9 +297,9 @@ export const tripRepository = {
             validateRecord(expenseShareRecordSchema, s, '費用分担データ'),
           )
         : [];
-    const checklistItems = (
-      await db.checklistItems.where('tripId').equals(id).sortBy('order')
-    ).map((item) => validateRecord(checklistItemRecordSchema, item, 'チェックリストデータ'));
+    const checklistItems = (await db.checklistItems.where('tripId').equals(id).sortBy('order')).map(
+      (item) => validateRecord(checklistItemRecordSchema, item, 'チェックリストデータ'),
+    );
 
     return buildBackup(trip, days, places, participants, expenses, expenseShares, checklistItems);
   },
@@ -307,7 +315,15 @@ export const tripRepository = {
     let savedTrip: TripRecord | undefined;
     await db.transaction(
       'rw',
-      [db.trips, db.days, db.places, db.participants, db.expenses, db.expenseShares, db.checklistItems],
+      [
+        db.trips,
+        db.days,
+        db.places,
+        db.participants,
+        db.expenses,
+        db.expenseShares,
+        db.checklistItems,
+      ],
       async () => {
         const existingTitles = new Set((await db.trips.toArray()).map((trip) => trip.title));
         let title = backup.trip.title;
@@ -451,7 +467,12 @@ export const tripRepository = {
           newShares.push(
             validateRecord(
               expenseShareRecordSchema,
-              { id: createId(), expenseId: newExpenseId, participantId: newParticipantId, amountYen: s.amountYen },
+              {
+                id: createId(),
+                expenseId: newExpenseId,
+                participantId: newParticipantId,
+                amountYen: s.amountYen,
+              },
               '費用分担の読み込み',
             ),
           );

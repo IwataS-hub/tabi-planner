@@ -13,7 +13,10 @@ import { TripNav } from '@/features/itinerary/TripNav';
 import type { ChecklistItem, ChecklistKind } from '@/domain/types';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
 import { useTrip, useTripChecklist, useTripParticipants } from '@/hooks/useTripData';
-import { checklistItemRepository, type ChecklistItemDraft } from '@/repositories/checklistItemRepository';
+import {
+  checklistItemRepository,
+  type ChecklistItemDraft,
+} from '@/repositories/checklistItemRepository';
 
 const KIND_LABELS: Record<ChecklistKind, string> = {
   packing: '持ち物',
@@ -45,7 +48,11 @@ export function ChecklistsPage() {
       <PageShell>
         <ErrorView
           title="旅行が見つかりません"
-          action={<Button asChild variant="outline" size="sm"><Link to="/">一覧へ戻る</Link></Button>}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to="/">一覧へ戻る</Link>
+            </Button>
+          }
         />
       </PageShell>
     );
@@ -61,9 +68,11 @@ export function ChecklistsPage() {
     return (
       <div className="space-y-3">
         <div className="flex justify-between">
-          <p className="text-ink-soft text-xs">未完了 {incomplete.length}件 / 完了 {complete.length}件</p>
+          <p className="text-ink-soft text-xs">
+            未完了 {incomplete.length}件 / 完了 {complete.length}件
+          </p>
           <Button size="sm" variant="outline" onClick={() => setAddingKind(kind)}>
-            <Plus className="size-3.5 mr-1" aria-hidden />
+            <Plus className="mr-1 size-3.5" aria-hidden />
             追加
           </Button>
         </div>
@@ -82,7 +91,9 @@ export function ChecklistsPage() {
         )}
 
         {items.length === 0 ? (
-          <p className="text-ink-soft text-sm py-4 text-center">{KIND_LABELS[kind]}はありません。</p>
+          <p className="text-ink-soft py-4 text-center text-sm">
+            {KIND_LABELS[kind]}はありません。
+          </p>
         ) : (
           <ul className="space-y-1.5">
             {[...incomplete, ...complete].map((item) => {
@@ -96,20 +107,28 @@ export function ChecklistsPage() {
                     type="button"
                     aria-label={item.completed ? '未完了にする' : '完了にする'}
                     className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border transition-colors ${
-                      item.completed ? 'bg-primary border-primary text-primary-foreground' : 'border-border'
+                      item.completed
+                        ? 'bg-primary border-primary text-primary-foreground'
+                        : 'border-border'
                     }`}
                     onClick={() =>
-                      void track(() => checklistItemRepository.setCompleted(item.id, !item.completed))
+                      void track(() =>
+                        checklistItemRepository.setCompleted(item.id, !item.completed),
+                      )
                     }
                   >
                     {item.completed && <Check className="size-3" aria-hidden />}
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className={`text-foreground text-sm ${item.completed ? 'line-through' : ''}`}>
+                    <p
+                      className={`text-foreground text-sm ${item.completed ? 'line-through' : ''}`}
+                    >
                       {item.title}
                     </p>
                     <div className="text-ink-soft flex flex-wrap gap-2 text-xs">
-                      {item.category && <span className="rounded bg-neutral-100 px-1">{item.category}</span>}
+                      {item.category && (
+                        <span className="rounded bg-neutral-100 px-1">{item.category}</span>
+                      )}
                       {assignee && <span>担当: {assignee.name}</span>}
                       {item.dueAt && <span>期日: {item.dueAt}</span>}
                     </div>
@@ -120,7 +139,7 @@ export function ChecklistsPage() {
                     aria-label={`${item.title}を削除`}
                     onClick={() => setDeleteItemId(item.id)}
                   >
-                    <Trash2 className="size-3.5 text-destructive" aria-hidden />
+                    <Trash2 className="text-destructive size-3.5" aria-hidden />
                   </Button>
                 </li>
               );
@@ -140,22 +159,26 @@ export function ChecklistsPage() {
         <div className="mx-auto max-w-2xl p-4">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChecklistKind)}>
             <TabsList className="mb-4 w-full">
-              <TabsTrigger value="packing" className="flex-1">持ち物</TabsTrigger>
-              <TabsTrigger value="todo" className="flex-1">ToDo</TabsTrigger>
+              <TabsTrigger value="packing" className="flex-1">
+                持ち物
+              </TabsTrigger>
+              <TabsTrigger value="todo" className="flex-1">
+                ToDo
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="packing">
               {renderList(packingItems.data ?? [], 'packing')}
             </TabsContent>
-            <TabsContent value="todo">
-              {renderList(todoItems.data ?? [], 'todo')}
-            </TabsContent>
+            <TabsContent value="todo">{renderList(todoItems.data ?? [], 'todo')}</TabsContent>
           </Tabs>
         </div>
       </div>
 
       <ConfirmDialog
         open={deleteItemId !== null}
-        onOpenChange={(open) => { if (!open) setDeleteItemId(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDeleteItemId(null);
+        }}
         title="項目を削除しますか？"
         description="この操作は取り消せません。"
         confirmLabel="削除"
@@ -216,13 +239,20 @@ function AddItemForm({ tripId, kind, participants, onSave, onCancel }: AddItemFo
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={kind === 'packing' ? '例：折りたたみ傘' : '例：ホテルを予約する'}
-          onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmit(); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void handleSubmit();
+          }}
         />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label htmlFor={`${fieldId}-cat`}>カテゴリ（任意）</Label>
-          <Input id={`${fieldId}-cat`} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="例：衣類" />
+          <Input
+            id={`${fieldId}-cat`}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="例：衣類"
+          />
         </div>
         {participants.length > 0 && (
           <div className="space-y-1">
@@ -234,7 +264,11 @@ function AddItemForm({ tripId, kind, participants, onSave, onCancel }: AddItemFo
               className="border-input bg-background text-foreground h-9 w-full rounded-md border px-2 text-sm"
             >
               <option value="">指定なし</option>
-              {participants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {participants.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
         )}
@@ -242,12 +276,21 @@ function AddItemForm({ tripId, kind, participants, onSave, onCancel }: AddItemFo
       {kind === 'todo' && (
         <div className="space-y-1">
           <Label htmlFor={`${fieldId}-due`}>期日（任意）</Label>
-          <Input id={`${fieldId}-due`} type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+          <Input
+            id={`${fieldId}-due`}
+            type="date"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+          />
         </div>
       )}
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => void handleSubmit()} disabled={!title.trim() || saving}>追加</Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>キャンセル</Button>
+        <Button size="sm" onClick={() => void handleSubmit()} disabled={!title.trim() || saving}>
+          追加
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          キャンセル
+        </Button>
       </div>
     </div>
   );

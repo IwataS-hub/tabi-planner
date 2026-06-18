@@ -21,13 +21,7 @@ function nextStatus(status: VisitStatus): VisitStatus {
   return 'planned';
 }
 
-function VisitStatusBadge({
-  status,
-  onClick,
-}: {
-  status: VisitStatus;
-  onClick: () => void;
-}) {
+function VisitStatusBadge({ status, onClick }: { status: VisitStatus; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -140,13 +134,14 @@ export function PlaceListItem({
               {meta_line ? `・${meta_line}` : ''}
             </span>
           </span>
-          {onVisitStatusChange ? (
-            <VisitStatusBadge
-              status={place.visitStatus}
-              onClick={() => onVisitStatusChange(place.id, nextStatus(place.visitStatus))}
-            />
-          ) : null}
         </button>
+
+        {onVisitStatusChange ? (
+          <VisitStatusBadge
+            status={place.visitStatus}
+            onClick={() => onVisitStatusChange(place.id, nextStatus(place.visitStatus))}
+          />
+        ) : null}
       </div>
 
       {selected ? (

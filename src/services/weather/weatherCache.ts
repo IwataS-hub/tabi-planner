@@ -11,7 +11,12 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<TripWeather>>();
 
-export function weatherCacheKey(lat: number, lon: number, startDate: string, endDate: string): string {
+export function weatherCacheKey(
+  lat: number,
+  lon: number,
+  startDate: string,
+  endDate: string,
+): string {
   return `${lat.toFixed(4)},${lon.toFixed(4)},${startDate},${endDate}`;
 }
 

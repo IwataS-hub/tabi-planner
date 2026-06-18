@@ -185,7 +185,15 @@ describe('Phase 2.3 new entities in backup', () => {
   };
 
   it('round-trips participants, expenses, shares, and checklist items', () => {
-    const backup = buildBackup(trip, days, places, [participant], [expense], [expenseShare], [checklistItem]);
+    const backup = buildBackup(
+      trip,
+      days,
+      places,
+      [participant],
+      [expense],
+      [expenseShare],
+      [checklistItem],
+    );
     const parsed = parseBackup(JSON.stringify(backup));
     expect(parsed.participants).toHaveLength(1);
     expect(parsed.participants[0].name).toBe('Alice');

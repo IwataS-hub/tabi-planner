@@ -17,10 +17,7 @@ function toParticipant(record: ParticipantRecord): Participant {
 
 export const participantRepository = {
   async listByTrip(tripId: string): Promise<Participant[]> {
-    const records = await db.participants
-      .where('tripId')
-      .equals(tripId)
-      .sortBy('order');
+    const records = await db.participants.where('tripId').equals(tripId).sortBy('order');
     return records.map(toParticipant);
   },
 
@@ -69,11 +66,15 @@ export const participantRepository = {
     const [expenseCount, shareCount, checklistCount] = await Promise.all([
       db.expenses.where('payerId').equals(id).count(),
       db.expenseShares.where('participantId').equals(id).count(),
-      db.checklistItems.where('tripId').above('').count().then(async () => {
-        // Check for checklist items assigned to this participant
-        const items = await db.checklistItems.toArray();
-        return items.filter((item) => item.assigneeId === id).length;
-      }),
+      db.checklistItems
+        .where('tripId')
+        .above('')
+        .count()
+        .then(async () => {
+          // Check for checklist items assigned to this participant
+          const items = await db.checklistItems.toArray();
+          return items.filter((item) => item.assigneeId === id).length;
+        }),
     ]);
     if (expenseCount > 0 || shareCount > 0) {
       throw new Error('この参加者は費用データで参照されているため削除できません');
