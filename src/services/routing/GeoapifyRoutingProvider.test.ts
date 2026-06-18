@@ -177,6 +177,21 @@ describe('GeoapifyRoutingProvider.route', () => {
     });
   });
 
+  it('reports no-route for an embedded error response (HTTP 200 + error object)', async () => {
+    // Geoapify returns HTTP 200 with this structure when approximated_transit
+    // finds no path. Must be no-route, not invalid-response.
+    const body = {
+      statusCode: 400,
+      error: 'Bad Request',
+      message: 'No path could be found for input',
+    };
+    const { fetchImpl } = recordingFetch(jsonResponse(body));
+    const provider = new GeoapifyRoutingProvider({ apiKey: API_KEY, fetchImpl });
+    await expect(provider.route({ from: FROM, to: TO, mode: 'transit' })).rejects.toMatchObject({
+      kind: 'no-route',
+    });
+  });
+
   it('reports no-route for empty route geometry', async () => {
     const body = {
       features: [

@@ -53,6 +53,22 @@ function isEmptyRouteEnvelope(json: unknown): boolean {
   return false;
 }
 
+/**
+ * Geoapify returns HTTP 200 with an embedded error object when no transit path
+ * can be found (e.g. { statusCode: 400, error: "Bad Request", message: "No
+ * path could be found for input" }). Treat these as no-route, not as a
+ * structural parse failure.
+ */
+function isEmbeddedErrorResponse(json: unknown): boolean {
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) return false;
+  const obj = json as Record<string, unknown>;
+  return (
+    typeof obj.statusCode === 'number' &&
+    typeof obj.error === 'string' &&
+    typeof obj.message === 'string'
+  );
+}
+
 /** Flatten LineString / MultiLineString coordinates into validated LatLng[]. */
 function toGeometry(feature: RoutingFeature): LatLng[] {
   const lines =
@@ -174,6 +190,7 @@ export class GeoapifyRoutingProvider implements RoutingProvider {
     }
 
     if (isEmptyRouteEnvelope(json)) throw new RoutingError('no-route');
+    if (isEmbeddedErrorResponse(json)) throw new RoutingError('no-route');
 
     const parsed = routingResponseSchema.safeParse(json);
     if (!parsed.success) throw new RoutingError('invalid-response', undefined, parsed.error);

@@ -26,6 +26,8 @@ interface TravelLegRowProps {
   selected: boolean;
   onSelect: () => void;
   onResult: (fromPlace: Place, toPlace: Place, mode: TravelMode, estimate: RouteEstimate) => void;
+  /** Called just before a new route calculation starts (used to clear stale geometry). */
+  onCalculationStart?: () => void;
 }
 
 function coordsOf(place: Place) {
@@ -44,6 +46,7 @@ export function TravelLegRow({
   selected,
   onSelect,
   onResult,
+  onCalculationStart,
 }: TravelLegRowProps) {
   const { state, calculate } = useRouteLeg({
     service,
@@ -54,12 +57,17 @@ export function TravelLegRow({
   const stale = isAutoEstimateStale(fromPlace, toPlace);
   const minutes = fromPlace.travelMinutes;
   const isAuto = fromPlace.travelEstimateSource === 'auto';
-  const showResult = minutes != null && !stale;
+  // For auto estimates, only show the saved result when the saved mode matches
+  // the currently selected mode. A saved bicycle result must not appear as the
+  // transit result when the user has switched the mode selector.
+  const savedModeMatchesSelected = !isAuto || fromPlace.travelMode === mode;
+  const showResult = minutes != null && !stale && savedModeMatchesSelected;
   const distance = fromPlace.travelDistanceMeters;
   const label = `${fromPlace.name} から ${toPlace.name} への移動`;
 
   const runCalculation = () => {
     onSelect();
+    onCalculationStart?.();
     void calculate(coordsOf(fromPlace), coordsOf(toPlace), mode);
   };
 

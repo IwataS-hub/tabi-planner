@@ -42,6 +42,8 @@ interface PlaceListProps {
     mode: TravelMode,
     estimate: RouteEstimate,
   ) => void;
+  /** Called when a route calculation starts for a leg (used to clear stale geometry). */
+  onLegCalculationStart?: (fromPlaceId: string) => void;
 }
 
 export function PlaceList({
@@ -57,6 +59,7 @@ export function PlaceList({
   selectedLegId,
   onSelectLeg,
   onLegResult,
+  onLegCalculationStart,
 }: PlaceListProps) {
   // A drag-time order override (set only in the drag handler, never in an
   // effect). The render order is derived by reconciling this override with the
@@ -123,6 +126,7 @@ export function PlaceList({
                     selected={selectedLegId === place.id}
                     onSelect={() => onSelectLeg(place.id)}
                     onResult={onLegResult}
+                    onCalculationStart={() => onLegCalculationStart?.(place.id)}
                   />
                 ) : null}
               </Fragment>

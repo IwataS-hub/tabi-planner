@@ -207,6 +207,80 @@ describe('TravelLegRow', () => {
     expect(screen.getByText(/25分/)).toBeInTheDocument();
   });
 
+  it('shows a saved auto result when the selected mode matches the saved mode', () => {
+    const from = makePlace({
+      id: 'A',
+      name: 'A',
+      latitude: 35.0,
+      longitude: 135.0,
+      travelMinutes: 20,
+      travelMode: 'bicycle',
+      travelDistanceMeters: 4900,
+      travelEstimateSource: 'auto',
+      travelToPlaceId: 'B',
+      travelRouteKey: routeKey(
+        { latitude: 35.0, longitude: 135.0 },
+        { latitude: 35.1, longitude: 135.1 },
+        'bicycle',
+      ),
+    });
+    renderRow({ fromPlace: from });
+    // Component initialises mode from fromPlace.travelMode ('bicycle') → match → shown.
+    expect(screen.getByText(/20分/)).toBeInTheDocument();
+  });
+
+  it('hides a saved auto result after the user switches to a different mode', async () => {
+    const user = userEvent.setup();
+    const from = makePlace({
+      id: 'A',
+      name: 'A',
+      latitude: 35.0,
+      longitude: 135.0,
+      travelMinutes: 20,
+      travelMode: 'bicycle',
+      travelDistanceMeters: 4900,
+      travelEstimateSource: 'auto',
+      travelToPlaceId: 'B',
+      travelRouteKey: routeKey(
+        { latitude: 35.0, longitude: 135.0 },
+        { latitude: 35.1, longitude: 135.1 },
+        'bicycle',
+      ),
+    });
+    renderRow({ fromPlace: from });
+    // Initially mode=bicycle matches saved=bicycle → shown.
+    expect(screen.getByText(/20分/)).toBeInTheDocument();
+    // User switches to transit.
+    await user.selectOptions(screen.getByRole('combobox'), 'transit');
+    // mode=transit ≠ saved=bicycle → bicycle result must not appear as the transit result.
+    expect(screen.queryByText(/20分/)).not.toBeInTheDocument();
+  });
+
+  it('shows a manual time regardless of the selected mode', async () => {
+    const user = userEvent.setup();
+    const from = makePlace({
+      id: 'A',
+      name: 'A',
+      travelMinutes: 25,
+      travelEstimateSource: 'manual',
+    });
+    renderRow({ fromPlace: from });
+    // Shown initially.
+    expect(screen.getByText(/25分/)).toBeInTheDocument();
+    // Still shown after switching to a different mode (manual has no mode affinity).
+    await user.selectOptions(screen.getByRole('combobox'), 'transit');
+    expect(screen.getByText(/25分/)).toBeInTheDocument();
+  });
+
+  it('calls onCalculationStart when calculate is clicked', async () => {
+    const user = userEvent.setup();
+    const onCalculationStart = vi.fn();
+    renderRow({ onCalculationStart });
+
+    await user.click(screen.getByRole('button', { name: /ルートを計算/ }));
+    expect(onCalculationStart).toHaveBeenCalledTimes(1);
+  });
+
   it('does not fire a second request while one is in flight', async () => {
     const user = userEvent.setup();
     // Never resolves → stays in the loading state.

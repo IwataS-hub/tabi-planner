@@ -101,6 +101,23 @@ export function ItineraryPage() {
     [placeList, selectedDayId],
   );
 
+  // When a new calculation starts, drop any in-memory geometry for the leg's
+  // current route key so the old shape is not shown during or after a failure.
+  const handleLegCalculationStart = useCallback(
+    (fromPlaceId: string) => {
+      const from = placesForDay.find((p) => p.id === fromPlaceId);
+      if (from?.travelRouteKey) {
+        const key = from.travelRouteKey;
+        setRouteGeometries((prev) => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [placesForDay],
+  );
+
   const placeCountByDay = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const place of placeList) counts[place.dayId] = (counts[place.dayId] ?? 0) + 1;
@@ -313,6 +330,7 @@ export function ItineraryPage() {
         selectedLegId={selectedLegId}
         onSelectLeg={handleSelectLeg}
         onLegResult={handleLegResult}
+        onLegCalculationStart={handleLegCalculationStart}
       />
     </div>
   );
