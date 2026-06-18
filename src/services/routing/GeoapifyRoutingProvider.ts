@@ -20,10 +20,10 @@ const nonNegativeFinite = z
 const positionSchema = z.array(z.number().refine(Number.isFinite, '座標が不正です')).min(2);
 
 const geometrySchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('LineString'), coordinates: z.array(positionSchema).min(2) }),
+  z.object({ type: z.literal('LineString'), coordinates: z.array(positionSchema) }),
   z.object({
     type: z.literal('MultiLineString'),
-    coordinates: z.array(z.array(positionSchema).min(2)).min(1),
+    coordinates: z.array(z.array(positionSchema)),
   }),
 ]);
 
@@ -40,6 +40,18 @@ const routingResponseSchema = z.object({
 });
 
 type RoutingFeature = z.infer<typeof featureSchema>;
+
+function isEmptyRouteEnvelope(json: unknown): boolean {
+  if (typeof json !== 'object' || json === null) return false;
+  const envelope = json as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(envelope, 'features')) {
+    return Array.isArray(envelope.features) && envelope.features.length === 0;
+  }
+  if (Object.prototype.hasOwnProperty.call(envelope, 'results')) {
+    return Array.isArray(envelope.results) && envelope.results.length === 0;
+  }
+  return false;
+}
 
 /** Flatten LineString / MultiLineString coordinates into validated LatLng[]. */
 function toGeometry(feature: RoutingFeature): LatLng[] {
@@ -160,6 +172,8 @@ export class GeoapifyRoutingProvider implements RoutingProvider {
     } catch (error) {
       throw new RoutingError('invalid-response', undefined, error);
     }
+
+    if (isEmptyRouteEnvelope(json)) throw new RoutingError('no-route');
 
     const parsed = routingResponseSchema.safeParse(json);
     if (!parsed.success) throw new RoutingError('invalid-response', undefined, parsed.error);

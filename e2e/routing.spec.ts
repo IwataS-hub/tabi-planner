@@ -28,7 +28,7 @@ const ROUTE_BODY = {
  * reverse) returns nothing so map-click reverse lookups are harmless, while the
  * routing endpoint is what these tests exercise. Returns a routing call counter.
  */
-async function mockGeoapify(page: Page, routing: 'ok' | 'fail' = 'ok') {
+async function mockGeoapify(page: Page, routing: 'ok' | 'fail' | 'no-route' = 'ok') {
   const counter = { routingCalls: 0 };
   await page.route('**/v1/geocode/**', (route) =>
     route.fulfill({
@@ -41,6 +41,12 @@ async function mockGeoapify(page: Page, routing: 'ok' | 'fail' = 'ok') {
     counter.routingCalls += 1;
     if (routing === 'fail') {
       await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+    } else if (routing === 'no-route') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ type: 'FeatureCollection', features: [] }),
+      });
     } else {
       await route.fulfill({
         status: 200,
@@ -133,5 +139,20 @@ test('a failed route calculation shows an inline error and keeps the itinerary',
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByText('名称未設定').first()).toBeVisible();
   await page.reload();
+  await expect(page.getByText('名称未設定').first()).toBeVisible();
+});
+
+test('a transit no-route response shows guidance without drawing geometry', async ({ page }) => {
+  const counter = await mockGeoapify(page, 'no-route');
+  await createTripWithTwoSpots(page, '公共交通結果なしの旅');
+
+  await page.getByLabel(/移動手段/).selectOption('transit');
+  await page.getByRole('button', { name: /ルートを計算/ }).click();
+
+  await expect(page.getByRole('alert')).toContainText(
+    'この区間では公共交通ルートを取得できませんでした。徒歩・自動車・自転車、または移動時間の手入力をお試しください。',
+  );
+  expect(counter.routingCalls).toBe(1);
+  await expect(page.locator('.leaflet-overlay-pane path[stroke="#2f6f8f"]')).toHaveCount(0);
   await expect(page.getByText('名称未設定').first()).toBeVisible();
 });

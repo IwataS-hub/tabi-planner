@@ -97,7 +97,7 @@ describe('GeoapifyRoutingProvider.route', () => {
     ['walk', 'walk'],
     ['drive', 'drive'],
     ['bicycle', 'bicycle'],
-    ['transit', 'transit'],
+    ['transit', 'approximated_transit'],
   ])('sends Geoapify mode %s and lang=ja, with exactly two waypoints', async (mode, expected) => {
     const { fetchImpl, calls } = recordingFetch(jsonResponse(ROUTE_BODY));
     const provider = new GeoapifyRoutingProvider({ apiKey: API_KEY, fetchImpl });
@@ -169,7 +169,15 @@ describe('GeoapifyRoutingProvider.route', () => {
     });
   });
 
-  it('rejects empty route geometry', async () => {
+  it('reports no-route for an empty results list', async () => {
+    const { fetchImpl } = recordingFetch(jsonResponse({ results: [] }));
+    const provider = new GeoapifyRoutingProvider({ apiKey: API_KEY, fetchImpl });
+    await expect(provider.route({ from: FROM, to: TO, mode: 'transit' })).rejects.toMatchObject({
+      kind: 'no-route',
+    });
+  });
+
+  it('reports no-route for empty route geometry', async () => {
     const body = {
       features: [
         {
@@ -181,7 +189,7 @@ describe('GeoapifyRoutingProvider.route', () => {
     const { fetchImpl } = recordingFetch(jsonResponse(body));
     const provider = new GeoapifyRoutingProvider({ apiKey: API_KEY, fetchImpl });
     await expect(provider.route({ from: FROM, to: TO, mode: 'walk' })).rejects.toMatchObject({
-      kind: 'invalid-response',
+      kind: 'no-route',
     });
   });
 

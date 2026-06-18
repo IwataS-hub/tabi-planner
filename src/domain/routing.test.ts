@@ -34,7 +34,7 @@ describe('geoapifyRoutingMode', () => {
     expect(geoapifyRoutingMode('walk')).toBe('walk');
     expect(geoapifyRoutingMode('drive')).toBe('drive');
     expect(geoapifyRoutingMode('bicycle')).toBe('bicycle');
-    expect(geoapifyRoutingMode('transit')).toBe('transit');
+    expect(geoapifyRoutingMode('transit')).toBe('approximated_transit');
   });
 });
 
@@ -49,6 +49,12 @@ describe('routeKey', () => {
   it('differs by mode and by direction', () => {
     expect(routeKey(from, to, 'walk')).not.toBe(routeKey(from, to, 'drive'));
     expect(routeKey(from, to, 'walk')).not.toBe(routeKey(to, from, 'walk'));
+  });
+
+  it('keeps the domain transit mode rather than Geoapify approximated_transit', () => {
+    const key = routeKey(from, to, 'transit');
+    expect(key).toBe('35.00000,135.00000,35.10000,135.10000,transit');
+    expect(key).not.toContain('approximated_transit');
   });
 
   it('rounds coordinates so tiny differences share a key', () => {

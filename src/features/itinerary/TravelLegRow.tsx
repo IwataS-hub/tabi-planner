@@ -7,6 +7,7 @@ import {
   isAutoEstimateStale,
   isReferenceMode,
   TRAVEL_MODE_LABELS,
+  TRAVEL_MODE_OPTION_LABELS,
   TRAVEL_MODES,
   type RouteEstimate,
   type TravelMode,
@@ -82,7 +83,7 @@ export function TravelLegRow({
         >
           {TRAVEL_MODES.map((value) => (
             <option key={value} value={value}>
-              {TRAVEL_MODE_LABELS[value]}
+              {TRAVEL_MODE_OPTION_LABELS[value]}
             </option>
           ))}
         </select>

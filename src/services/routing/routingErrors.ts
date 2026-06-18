@@ -22,7 +22,8 @@ const DEFAULT_MESSAGES: Record<RoutingErrorKind, string> = {
   timeout: 'ルート計算がタイムアウトしました。もう一度お試しください。',
   aborted: 'ルート計算が中止されました。',
   'invalid-response': 'ルート結果を読み取れませんでした。',
-  'no-route': 'ルートが見つかりませんでした。',
+  'no-route':
+    'この区間では公共交通ルートを取得できませんでした。徒歩・自動車・自転車、または移動時間の手入力をお試しください。',
 };
 
 export class RoutingError extends Error {

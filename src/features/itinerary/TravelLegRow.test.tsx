@@ -99,6 +99,11 @@ describe('TravelLegRow', () => {
     );
   });
 
+  it('labels the public-transit option as a reference estimate', () => {
+    renderRow();
+    expect(screen.getByRole('option', { name: '公共交通（参考）' })).toBeInTheDocument();
+  });
+
   it('shows time, distance and an "auto" badge for an auto estimate', () => {
     const from = makePlace({
       id: 'A',
@@ -153,7 +158,7 @@ describe('TravelLegRow', () => {
       ),
     });
     renderRow({ fromPlace: from });
-    expect(screen.getByText(/参考/)).toBeInTheDocument();
+    expect(screen.getByText('（参考）')).toBeInTheDocument();
   });
 
   it('shows a stale notice when the auto estimate no longer matches the segment', () => {
@@ -178,6 +183,28 @@ describe('TravelLegRow', () => {
     await user.click(screen.getByRole('button', { name: /ルートを計算/ }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('利用上限');
+  });
+
+  it('shows a specific no-route message without clearing an existing manual time', async () => {
+    const user = userEvent.setup();
+    const route = vi.fn().mockRejectedValue(new RoutingError('no-route'));
+    const from = makePlace({
+      id: 'A',
+      name: 'A',
+      travelMinutes: 25,
+      travelEstimateSource: 'manual',
+    });
+    renderRow({ fromPlace: from, service: makeService({ route }) });
+
+    await user.selectOptions(screen.getByRole('combobox'), 'transit');
+    await user.click(screen.getByRole('button', { name: /再計算/ }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'この区間では公共交通ルートを取得できませんでした。徒歩・自動車・自転車、または移動時間の手入力をお試しください。',
+    );
+    expect(screen.getByText('手入力')).toBeInTheDocument();
+    expect(screen.getByText(/25分/)).toBeInTheDocument();
   });
 
   it('does not fire a second request while one is in flight', async () => {

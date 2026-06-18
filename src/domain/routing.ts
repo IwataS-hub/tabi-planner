@@ -17,6 +17,11 @@ export const TRAVEL_MODE_LABELS: Record<TravelMode, string> = {
   transit: '公共交通',
 };
 
+export const TRAVEL_MODE_OPTION_LABELS: Record<TravelMode, string> = {
+  ...TRAVEL_MODE_LABELS,
+  transit: '公共交通（参考）',
+};
+
 export const DEFAULT_TRAVEL_MODE: TravelMode = 'walk';
 
 /** Modes whose estimate is only a rough reference (shown as「参考」). */
@@ -38,7 +43,7 @@ export function geoapifyRoutingMode(mode: TravelMode): string {
     case 'bicycle':
       return 'bicycle';
     case 'transit':
-      return 'transit';
+      return 'approximated_transit';
   }
 }
 
