@@ -204,4 +204,31 @@ describe('equalSplit', () => {
     expect(result).toHaveLength(1);
     expect(result[0].amountYen).toBe(1500);
   });
+
+  it('selected-participants split: ¥10,000 among subset of 2 of 3', () => {
+    // Only p1 and p2 are in the selected subset
+    const subset = [p1, p2];
+    const result = equalSplit(10_000, subset);
+    expect(result).toHaveLength(2);
+    const total = result.reduce((s, r) => s + r.amountYen, 0);
+    expect(total).toBe(10_000);
+    expect(result.every((r) => r.amountYen === 5_000)).toBe(true);
+    // p3 should not appear in the shares
+    expect(result.find((r) => r.participantId === 'p3')).toBeUndefined();
+  });
+
+  it('3 participants, ¥10,000 equal split: total equals amount', () => {
+    const result = equalSplit(10_000, [p1, p2, p3]);
+    const total = result.reduce((s, r) => s + r.amountYen, 0);
+    expect(total).toBe(10_000);
+  });
+
+  it('3 participants, ¥10,000 equal split: remainder is distributed one-yen each', () => {
+    const result = equalSplit(10_000, [p1, p2, p3]);
+    // 10000 / 3 = 3333 remainder 1 → one person gets 3334
+    const amounts = result.map((r) => r.amountYen).sort((a, b) => b - a);
+    expect(amounts[0]).toBe(3334);
+    expect(amounts[1]).toBe(3333);
+    expect(amounts[2]).toBe(3333);
+  });
 });

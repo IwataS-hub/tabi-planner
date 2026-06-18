@@ -1,6 +1,6 @@
 import { useState, useId } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Plus, Trash2, Check } from 'lucide-react';
+import { Plus, Trash2, Check, Pencil, Filter, Lightbulb } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,17 +11,31 @@ import { AppHeader } from '@/components/AppHeader';
 import { ItineraryHeader } from '@/features/itinerary/ItineraryHeader';
 import { TripNav } from '@/features/itinerary/TripNav';
 import type { ChecklistItem, ChecklistKind } from '@/domain/types';
+import { getWeatherAdvice, getWeatherSuggestions } from '@/domain/weather';
+import type { DayWeather } from '@/domain/weather';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
-import { useTrip, useTripChecklist, useTripParticipants } from '@/hooks/useTripData';
+import {
+  useTrip,
+  useTripChecklist,
+  useTripParticipants,
+  useTripDays,
+  useTripPlaces,
+} from '@/hooks/useTripData';
 import {
   checklistItemRepository,
   type ChecklistItemDraft,
 } from '@/repositories/checklistItemRepository';
+import { fetchTripWeather, representativeCoordinate } from '@/services/weather/weatherService';
+import { WeatherError } from '@/services/weather/weatherErrors';
 
 const KIND_LABELS: Record<ChecklistKind, string> = {
   packing: '持ち物',
   todo: 'ToDo',
 };
+
+function todayJst(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
 export function ChecklistsPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -31,10 +45,17 @@ export function ChecklistsPage() {
   const packingItems = useTripChecklist(tripId, 'packing');
   const todoItems = useTripChecklist(tripId, 'todo');
   const participants = useTripParticipants(tripId);
+  const days = useTripDays(tripId);
+  const places = useTripPlaces(tripId);
 
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const [addingKind, setAddingKind] = useState<ChecklistKind | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ChecklistKind>('packing');
+  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{ title: string; category: string }>>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState('');
 
   if (trip.status === 'loading') {
     return (
@@ -60,25 +81,85 @@ export function ChecklistsPage() {
 
   const tripData = trip.data;
   const participantList = participants.data ?? [];
+  const dayList = days.data ?? [];
+  const placeList = places.data ?? [];
+  const placesByDay = Object.fromEntries(
+    dayList.map((d) => [d.id, placeList.filter((p) => p.dayId === d.id)]),
+  );
+
+  const handleFetchSuggestions = async () => {
+    setSuggestionsError('');
+    setLoadingSuggestions(true);
+    const coord = representativeCoordinate(dayList, placesByDay);
+    if (!coord || coord.latitude == null) {
+      setSuggestionsError('スポットの座標情報がないため天気を取得できません');
+      setLoadingSuggestions(false);
+      return;
+    }
+    const today = todayJst();
+    try {
+      const weather = await fetchTripWeather(coord, tripData.startDate, tripData.endDate, today);
+      if (!weather || weather.daily.length === 0) {
+        setSuggestionsError('天気データがありません');
+        return;
+      }
+      const allAdvice = weather.daily.map((d: DayWeather) => getWeatherAdvice(d));
+      const merged = {
+        umbrella: allAdvice.some((a) => a.umbrella),
+        heavyRain: allAdvice.some((a) => a.heavyRain),
+        heat: allAdvice.some((a) => a.heat),
+        cold: allAdvice.some((a) => a.cold),
+        highUv: allAdvice.some((a) => a.highUv),
+        strongWind: allAdvice.some((a) => a.strongWind),
+      };
+      setSuggestions(getWeatherSuggestions(merged));
+    } catch (err) {
+      if (err instanceof WeatherError && err.kind === 'out-of-range') {
+        setSuggestionsError('旅行日程が予報範囲外です');
+      } else {
+        setSuggestionsError('天気情報の取得に失敗しました');
+      }
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const handleAddSuggestion = async (suggestion: { title: string; category: string }) => {
+    if (!tripId) return;
+    await track(() => checklistItemRepository.addSuggestions(tripId, 'packing', [suggestion]));
+    setSuggestions((prev) => prev.filter((s) => s.title !== suggestion.title));
+  };
 
   const renderList = (items: ChecklistItem[], kind: ChecklistKind) => {
     const incomplete = items.filter((item) => !item.completed);
     const complete = items.filter((item) => item.completed);
+    const displayed = showIncompleteOnly ? incomplete : [...incomplete, ...complete];
 
     return (
       <div className="space-y-3">
-        <div className="flex justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-ink-soft text-xs">
             未完了 {incomplete.length}件 / 完了 {complete.length}件
           </p>
-          <Button size="sm" variant="outline" onClick={() => setAddingKind(kind)}>
-            <Plus className="mr-1 size-3.5" aria-hidden />
-            追加
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={showIncompleteOnly ? 'default' : 'outline'}
+              onClick={() => setShowIncompleteOnly((v) => !v)}
+              aria-pressed={showIncompleteOnly}
+            >
+              <Filter className="mr-1 size-3.5" aria-hidden />
+              未完了のみ
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setAddingKind(kind)}>
+              <Plus className="mr-1 size-3.5" aria-hidden />
+              追加
+            </Button>
+          </div>
         </div>
 
         {addingKind === kind && (
-          <AddItemForm
+          <ItemForm
             tripId={tripId!}
             kind={kind}
             participants={participantList}
@@ -90,14 +171,88 @@ export function ChecklistsPage() {
           />
         )}
 
-        {items.length === 0 ? (
+        {/* Weather suggestions panel (packing only) */}
+        {kind === 'packing' && (
+          <div className="space-y-2 rounded-xl border border-dashed p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft flex items-center gap-1 text-xs font-medium">
+                <Lightbulb className="size-3.5" aria-hidden />
+                天気由来の持ち物候補
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => void handleFetchSuggestions()}
+                disabled={loadingSuggestions}
+              >
+                {loadingSuggestions ? '取得中…' : '天気から提案'}
+              </Button>
+            </div>
+            {suggestionsError && <p className="text-destructive text-xs">{suggestionsError}</p>}
+            {suggestions.length > 0 && (
+              <ul className="space-y-1">
+                {suggestions.map((s) => (
+                  <li
+                    key={s.title}
+                    className="flex items-center justify-between rounded-lg bg-sky-50 px-2 py-1 text-xs"
+                  >
+                    <span>
+                      {s.title}
+                      {s.category && <span className="text-ink-soft ml-1">({s.category})</span>}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => void handleAddSuggestion(s)}
+                    >
+                      追加
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {suggestions.length === 0 && !loadingSuggestions && !suggestionsError && (
+              <p className="text-ink-soft text-xs">「天気から提案」をタップして候補を取得します</p>
+            )}
+          </div>
+        )}
+
+        {displayed.length === 0 ? (
           <p className="text-ink-soft py-4 text-center text-sm">
-            {KIND_LABELS[kind]}はありません。
+            {showIncompleteOnly
+              ? '未完了の項目はありません。'
+              : `${KIND_LABELS[kind]}はありません。`}
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {[...incomplete, ...complete].map((item) => {
+            {displayed.map((item) => {
               const assignee = participantList.find((p) => p.id === item.assigneeId);
+              if (editingItemId === item.id) {
+                return (
+                  <li key={item.id}>
+                    <ItemForm
+                      tripId={tripId!}
+                      kind={kind}
+                      participants={participantList}
+                      initial={item}
+                      onSave={async (draft) => {
+                        await track(() =>
+                          checklistItemRepository.update(item.id, {
+                            title: draft.title,
+                            category: draft.category ?? '',
+                            assigneeId: draft.assigneeId ?? null,
+                            dueAt: draft.dueAt ?? null,
+                          }),
+                        );
+                        setEditingItemId(null);
+                      }}
+                      onCancel={() => setEditingItemId(null)}
+                    />
+                  </li>
+                );
+              }
               return (
                 <li
                   key={item.id}
@@ -133,6 +288,14 @@ export function ChecklistsPage() {
                       {item.dueAt && <span>期日: {item.dueAt}</span>}
                     </div>
                   </div>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`${item.title}を編集`}
+                    onClick={() => setEditingItemId(item.id)}
+                  >
+                    <Pencil className="size-3.5" aria-hidden />
+                  </Button>
                   <Button
                     size="icon-sm"
                     variant="ghost"
@@ -193,23 +356,24 @@ export function ChecklistsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Add item form
+// Add / Edit item form
 // ---------------------------------------------------------------------------
 
-interface AddItemFormProps {
+interface ItemFormProps {
   tripId: string;
   kind: ChecklistKind;
   participants: { id: string; name: string }[];
+  initial?: ChecklistItem;
   onSave: (draft: ChecklistItemDraft) => Promise<void>;
   onCancel: () => void;
 }
 
-function AddItemForm({ tripId, kind, participants, onSave, onCancel }: AddItemFormProps) {
+function ItemForm({ tripId, kind, participants, initial, onSave, onCancel }: ItemFormProps) {
   const fieldId = useId();
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [dueAt, setDueAt] = useState('');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [category, setCategory] = useState(initial?.category ?? '');
+  const [assigneeId, setAssigneeId] = useState(initial?.assigneeId ?? '');
+  const [dueAt, setDueAt] = useState(initial?.dueAt ?? '');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
@@ -286,7 +450,7 @@ function AddItemForm({ tripId, kind, participants, onSave, onCancel }: AddItemFo
       )}
       <div className="flex gap-2">
         <Button size="sm" onClick={() => void handleSubmit()} disabled={!title.trim() || saving}>
-          追加
+          {initial ? '保存' : '追加'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
           キャンセル

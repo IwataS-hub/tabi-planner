@@ -45,7 +45,7 @@ export function getInFlight(key: string): Promise<TripWeather> | undefined {
 
 export function setInFlight(key: string, promise: Promise<TripWeather>): void {
   inFlight.set(key, promise);
-  void promise.finally(() => inFlight.delete(key));
+  promise.finally(() => inFlight.delete(key)).catch(() => {});
 }
 
 /** Clear all cache entries (for testing). */

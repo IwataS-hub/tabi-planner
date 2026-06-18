@@ -63,6 +63,8 @@ export function MoneyPage() {
 
   const [addingParticipant, setAddingParticipant] = useState(false);
   const [newParticipantName, setNewParticipantName] = useState('');
+  const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+  const [editingParticipantName, setEditingParticipantName] = useState('');
   const [addingExpense, setAddingExpense] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
@@ -115,6 +117,14 @@ export function MoneyPage() {
     } catch (err) {
       alert(err instanceof Error ? err.message : '削除できませんでした');
     }
+  };
+
+  const handleRenameParticipant = async (id: string) => {
+    const name = editingParticipantName.trim();
+    if (!name) return;
+    await track(() => participantRepository.update(id, name));
+    setEditingParticipantId(null);
+    setEditingParticipantName('');
   };
 
   const handleSaveBudget = async () => {
@@ -259,6 +269,45 @@ export function MoneyPage() {
               <ul className="space-y-1.5">
                 {participantList.map((p) => {
                   const bal = balances.find((b) => b.participantId === p.id);
+                  if (editingParticipantId === p.id) {
+                    return (
+                      <li
+                        key={p.id}
+                        className="bg-card flex items-center gap-2 rounded-xl border px-3 py-2"
+                      >
+                        <Input
+                          autoFocus
+                          value={editingParticipantName}
+                          onChange={(e) => setEditingParticipantName(e.target.value)}
+                          className="h-7 flex-1 text-sm"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void handleRenameParticipant(p.id);
+                            if (e.key === 'Escape') {
+                              setEditingParticipantId(null);
+                              setEditingParticipantName('');
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => void handleRenameParticipant(p.id)}
+                          disabled={!editingParticipantName.trim()}
+                        >
+                          保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingParticipantId(null);
+                            setEditingParticipantName('');
+                          }}
+                        >
+                          キャンセル
+                        </Button>
+                      </li>
+                    );
+                  }
                   return (
                     <li
                       key={p.id}
@@ -274,14 +323,27 @@ export function MoneyPage() {
                           </span>
                         )}
                       </div>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={`${p.name}を削除`}
-                        onClick={() => void handleRemoveParticipant(p.id)}
-                      >
-                        <Trash2 className="text-destructive size-3.5" aria-hidden />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`${p.name}を編集`}
+                          onClick={() => {
+                            setEditingParticipantId(p.id);
+                            setEditingParticipantName(p.name);
+                          }}
+                        >
+                          <Pencil className="size-3.5" aria-hidden />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`${p.name}を削除`}
+                          onClick={() => void handleRemoveParticipant(p.id)}
+                        >
+                          <Trash2 className="text-destructive size-3.5" aria-hidden />
+                        </Button>
+                      </div>
                     </li>
                   );
                 })}
@@ -493,7 +555,10 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
   const [payerId, setPayerId] = useState(initial?.expense.payerId ?? participants[0]?.id ?? '');
   const [dayId, setDayId] = useState<string>(initial?.expense.dayId ?? '');
   const [memo, setMemo] = useState(initial?.expense.memo ?? '');
-  const [splitMode, setSplitMode] = useState<'equal' | 'custom'>('equal');
+  const [splitMode, setSplitMode] = useState<'equal' | 'selected' | 'custom'>('equal');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(participants.map((p) => p.id)),
+  );
   const [customShares, setCustomShares] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       initial?.shares.map((s) => [s.participantId, s.amountYen.toString()]) ??
@@ -506,13 +571,18 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
   const amount = parseInt(amountStr, 10);
   const amountValid = !Number.isNaN(amount) && amount >= 0;
 
+  const selectedParticipants =
+    splitMode === 'selected' ? participants.filter((p) => selectedIds.has(p.id)) : participants;
+
   const computedShares: ShareInput[] =
     splitMode === 'equal'
       ? equalSplit(amountValid ? amount : 0, participants)
-      : participants.map((p) => ({
-          participantId: p.id,
-          amountYen: parseInt(customShares[p.id] ?? '0', 10) || 0,
-        }));
+      : splitMode === 'selected'
+        ? equalSplit(amountValid ? amount : 0, selectedParticipants)
+        : participants.map((p) => ({
+            participantId: p.id,
+            amountYen: parseInt(customShares[p.id] ?? '0', 10) || 0,
+          }));
 
   const shareTotal = computedShares.reduce((s, x) => s + x.amountYen, 0);
 
@@ -634,12 +704,40 @@ function ExpenseForm({ participants, tripId, days, initial, onSave, onCancel }: 
           </button>
           <button
             type="button"
+            onClick={() => setSplitMode('selected')}
+            className={`rounded px-2 py-1 text-xs ${splitMode === 'selected' ? 'bg-primary text-primary-foreground' : 'text-ink-soft border'}`}
+          >
+            一部均等
+          </button>
+          <button
+            type="button"
             onClick={() => setSplitMode('custom')}
             className={`rounded px-2 py-1 text-xs ${splitMode === 'custom' ? 'bg-primary text-primary-foreground' : 'text-ink-soft border'}`}
           >
             カスタム
           </button>
         </div>
+        {splitMode === 'selected' && (
+          <div className="mt-1 flex flex-wrap gap-2">
+            {participants.map((p) => (
+              <label key={p.id} className="flex cursor-pointer items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(p.id)}
+                  onChange={(e) =>
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.add(p.id);
+                      else next.delete(p.id);
+                      return next;
+                    })
+                  }
+                />
+                {p.name}
+              </label>
+            ))}
+          </div>
+        )}
         <div className="mt-1 space-y-1">
           {participants.map((p) => {
             const share = computedShares.find((s) => s.participantId === p.id);

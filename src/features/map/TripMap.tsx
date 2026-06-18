@@ -174,6 +174,7 @@ export function TripMap({
             category: place.category,
             order: index + 1,
             selected: place.id === selectedPlaceId,
+            visitStatus: place.visitStatus,
           })}
           // Selected marker renders above the rest.
           zIndexOffset={place.id === selectedPlaceId ? 1000 : 0}

@@ -32,6 +32,7 @@ import { PlaceList } from './PlaceList';
 import { PlaceSearch } from './PlaceSearch';
 import { MapPanel } from './MapPanel';
 import { PrintItinerary } from './PrintItinerary';
+import { WeatherWidget } from './WeatherWidget';
 
 export function ItineraryPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -336,6 +337,13 @@ export function ItineraryPage() {
 
   const listColumn = (
     <div className="space-y-3">
+      <WeatherWidget
+        days={dayList}
+        places={placeList}
+        selectedDayId={selectedDayId}
+        tripStartDate={trip.data.startDate}
+        tripEndDate={trip.data.endDate}
+      />
       <PlaceSearch
         service={geocodingService}
         getBias={getBias}
