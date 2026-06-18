@@ -30,6 +30,10 @@ export function useRouteLeg({ service, onResult }: UseRouteLegOptions) {
   const calculate = useCallback(
     async (from: LatLng, to: LatLng, mode: TravelMode) => {
       if (!service) return;
+      // Public transit is never auto-calculated via Geoapify (its
+      // approximated_transit data is unreliable here); the UI opens Google Maps
+      // instead. Guard defensively so no transit request can ever be issued.
+      if (mode === 'transit') return;
       const key = routeKey(from, to, mode);
       // Ignore a duplicate request for the same leg+mode already running.
       if (loadingKeyRef.current === key) return;

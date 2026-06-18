@@ -187,7 +187,16 @@ export const placeRepository = {
       const next = manualTravelEdit
         ? {
             ...merged,
-            ...clearedAutoTravel(),
+            // A manual time keeps its mode label (so e.g. a transit time can be
+            // shown/printed as 公共交通) but drops the auto-only metadata.
+            // Clearing the time clears the mode too.
+            travelDistanceMeters: null,
+            travelToPlaceId: null,
+            travelRouteKey: null,
+            travelCalculatedAt: null,
+            // Only 'transit' survives as a manual mode label (walk/drive/bicycle
+            // are auto-only); the schema enforces this too.
+            travelMode: merged.travelMode === 'transit' ? 'transit' : null,
             travelEstimateSource: merged.travelMinutes == null ? null : 'manual',
           }
         : merged;
@@ -196,6 +205,44 @@ export const placeRepository = {
       // A coordinate change invalidates this leg and the preceding leg's auto
       // estimate (their route key no longer matches the current coordinates).
       if (coordsChanged) await reconcileAutoTravelInDay(record.dayId);
+      await touchTrip(record.tripId);
+    });
+    if (!record) throw new Error('スポットの更新に失敗しました');
+    return placeFromRecord(record);
+  },
+
+  /**
+   * Mark a leg as public transit. Transit is not auto-routed via Geoapify; the
+   * UI links out to Google Maps and the time is entered by hand. To avoid
+   * discarding a saved walk/drive/bicycle auto estimate, this is a no-op when an
+   * `auto` estimate exists (transit is then shown ephemerally) or when the leg
+   * is already transit. Otherwise it records `travelMode: 'transit'` so a later
+   * manual time prints/reads as 公共交通; any auto-only metadata is cleared.
+   */
+  async selectTransit(id: string): Promise<Place> {
+    let record: PlaceRecord | undefined;
+    await db.transaction('rw', db.places, db.trips, async () => {
+      const existing = await db.places.get(id);
+      if (!existing) throw new Error(`スポットが見つかりません: ${id}`);
+      if (existing.travelEstimateSource === 'auto' || existing.travelMode === 'transit') {
+        record = validateRecord(placeRecordSchema, existing, 'スポットデータ');
+        return;
+      }
+      record = validateRecord(
+        placeRecordSchema,
+        {
+          ...existing,
+          travelMode: 'transit',
+          travelDistanceMeters: null,
+          travelToPlaceId: null,
+          travelRouteKey: null,
+          travelCalculatedAt: null,
+          travelEstimateSource: existing.travelMinutes == null ? null : 'manual',
+          updatedAt: nowIso(),
+        },
+        'スポットの更新',
+      );
+      await db.places.put(record);
       await touchTrip(record.tripId);
     });
     if (!record) throw new Error('スポットの更新に失敗しました');

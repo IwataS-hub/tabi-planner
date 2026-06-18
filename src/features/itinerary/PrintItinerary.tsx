@@ -9,12 +9,15 @@ import { APP } from '@/config/app';
 function travelText(place: Place): string {
   if (place.travelMinutes == null) return '—';
   const isAuto = place.travelEstimateSource === 'auto';
-  const prefix = isAuto && place.travelMode ? `${TRAVEL_MODE_LABELS[place.travelMode]} ` : '';
+  // Mode is shown for both auto and manual (e.g. a manual transit time reads
+  // "公共交通 20分（手入力）"). Distance is auto-only; manual gets a（手入力）tag.
+  const prefix = place.travelMode ? `${TRAVEL_MODE_LABELS[place.travelMode]} ` : '';
   const distance =
     isAuto && place.travelDistanceMeters != null
       ? `・${formatDistanceMeters(place.travelDistanceMeters)}`
       : '';
-  return `${prefix}${formatDuration(place.travelMinutes)}${distance}`;
+  const suffix = isAuto ? '' : '（手入力）';
+  return `${prefix}${formatDuration(place.travelMinutes)}${distance}${suffix}`;
 }
 
 interface PrintItineraryProps {

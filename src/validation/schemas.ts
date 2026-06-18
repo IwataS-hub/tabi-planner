@@ -151,13 +151,17 @@ export const placeRecordSchema = z
     updatedAt: isoTimestamp,
   })
   .superRefine((place, ctx) => {
-    const autoFields = [
-      place.travelMode,
+    // `travelMode === 'transit'` may exist WITHOUT an auto estimate: transit is
+    // chosen by the user and routed externally (Google Maps), never auto-
+    // estimated. Every other auto-only field stays null unless source is 'auto',
+    // and only 'transit' may appear as a non-auto mode label.
+    const autoOnlyFields = [
       place.travelDistanceMeters,
       place.travelToPlaceId,
       place.travelRouteKey,
       place.travelCalculatedAt,
     ];
+    const hasNonTransitMode = place.travelMode != null && place.travelMode !== 'transit';
 
     if (place.travelEstimateSource === 'auto') {
       if (
@@ -181,11 +185,8 @@ export const placeRecordSchema = z
     if (place.travelEstimateSource === 'manual') {
       if (
         place.travelMinutes == null ||
-        place.travelMode != null ||
-        place.travelDistanceMeters != null ||
-        place.travelToPlaceId != null ||
-        place.travelRouteKey != null ||
-        place.travelCalculatedAt != null
+        hasNonTransitMode ||
+        autoOnlyFields.some((v) => v != null)
       ) {
         ctx.addIssue({
           code: 'custom',
@@ -196,7 +197,7 @@ export const placeRecordSchema = z
       return;
     }
 
-    if (autoFields.some((value) => value != null)) {
+    if (hasNonTransitMode || autoOnlyFields.some((value) => value != null)) {
       ctx.addIssue({
         code: 'custom',
         message: '未設定の移動時間に自動見積もりの情報が残っています',

@@ -118,6 +118,26 @@ export function ItineraryPage() {
     [placesForDay],
   );
 
+  // Switching a leg to public transit: clear any in-memory route shape for it
+  // and persist the transit choice (a no-op when it would overwrite a saved
+  // walk/drive/bicycle auto estimate, which is preserved).
+  const handleTransitSelected = useCallback(
+    (fromPlaceId: string) => {
+      const from = placesForDay.find((p) => p.id === fromPlaceId);
+      if (from?.travelRouteKey) {
+        const key = from.travelRouteKey;
+        setRouteGeometries((prev) => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+      setSelectedLegId((current) => (current === fromPlaceId ? null : current));
+      void track(() => placeRepository.selectTransit(fromPlaceId));
+    },
+    [placesForDay, track],
+  );
+
   const placeCountByDay = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const place of placeList) counts[place.dayId] = (counts[place.dayId] ?? 0) + 1;
@@ -331,6 +351,7 @@ export function ItineraryPage() {
         onSelectLeg={handleSelectLeg}
         onLegResult={handleLegResult}
         onLegCalculationStart={handleLegCalculationStart}
+        onTransitSelected={handleTransitSelected}
       />
     </div>
   );

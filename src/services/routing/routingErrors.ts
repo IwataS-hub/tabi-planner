@@ -23,7 +23,7 @@ const DEFAULT_MESSAGES: Record<RoutingErrorKind, string> = {
   aborted: 'ルート計算が中止されました。',
   'invalid-response': 'ルート結果を読み取れませんでした。',
   'no-route':
-    'この区間では公共交通ルートを取得できませんでした。徒歩・自動車・自転車、または移動時間の手入力をお試しください。',
+    'この区間のルートを取得できませんでした。別の移動手段、または移動時間の手入力をお試しください。',
 };
 
 export class RoutingError extends Error {

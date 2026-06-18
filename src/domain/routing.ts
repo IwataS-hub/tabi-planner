@@ -17,17 +17,7 @@ export const TRAVEL_MODE_LABELS: Record<TravelMode, string> = {
   transit: '公共交通',
 };
 
-export const TRAVEL_MODE_OPTION_LABELS: Record<TravelMode, string> = {
-  ...TRAVEL_MODE_LABELS,
-  transit: '公共交通（参考）',
-};
-
 export const DEFAULT_TRAVEL_MODE: TravelMode = 'walk';
-
-/** Modes whose estimate is only a rough reference (shown as「参考」). */
-export function isReferenceMode(mode: TravelMode): boolean {
-  return mode === 'transit';
-}
 
 export function isTravelMode(value: unknown): value is TravelMode {
   return typeof value === 'string' && (TRAVEL_MODES as readonly string[]).includes(value);

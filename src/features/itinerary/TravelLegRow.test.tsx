@@ -99,9 +99,10 @@ describe('TravelLegRow', () => {
     );
   });
 
-  it('labels the public-transit option as a reference estimate', () => {
+  it('labels the public-transit option as 公共交通 (no 参考)', () => {
     renderRow();
-    expect(screen.getByRole('option', { name: '公共交通（参考）' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '公共交通' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '公共交通（参考）' })).not.toBeInTheDocument();
   });
 
   it('shows time, distance and an "auto" badge for an auto estimate', () => {
@@ -140,25 +141,48 @@ describe('TravelLegRow', () => {
     expect(screen.getByText(/25分/)).toBeInTheDocument();
   });
 
-  it('marks a public-transit estimate as 参考', () => {
+  it('shows a Google Maps transit link (no calculate button, no routing call)', async () => {
+    const user = userEvent.setup();
+    const route = vi.fn();
+    const onTransitSelected = vi.fn();
+    renderRow({ service: makeService({ route }), onTransitSelected });
+
+    await user.selectOptions(screen.getByRole('combobox'), 'transit');
+
+    const link = screen.getByRole('link', { name: /Google Mapsで確認/ });
+    expect(link).toHaveAttribute('href', expect.stringContaining('api=1'));
+    expect(link).toHaveAttribute('href', expect.stringContaining('travelmode=transit'));
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link.getAttribute('href')).not.toContain('geoapify');
+    expect(link.getAttribute('href')).not.toContain('apiKey');
+    expect(screen.getByText(/Google Mapsで確認し、移動時間を手入力/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ルートを計算|再計算/ })).not.toBeInTheDocument();
+    expect(route).not.toHaveBeenCalled();
+    expect(onTransitSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows an error and no link for transit when a coordinate is invalid', async () => {
+    const user = userEvent.setup();
+    const badFrom = makePlace({ id: 'A', name: 'A', latitude: 999, longitude: 135 });
+    renderRow({ fromPlace: badFrom });
+    await user.selectOptions(screen.getByRole('combobox'), 'transit');
+    expect(screen.queryByRole('link', { name: /Google Maps/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Google Mapsを開けませんでした');
+  });
+
+  it('still shows a manual transit time alongside the Google Maps link', () => {
     const from = makePlace({
       id: 'A',
       name: 'A',
-      latitude: 35.0,
-      longitude: 135.0,
-      travelMinutes: 30,
+      travelMinutes: 20,
       travelMode: 'transit',
-      travelDistanceMeters: 5000,
-      travelEstimateSource: 'auto',
-      travelToPlaceId: 'B',
-      travelRouteKey: routeKey(
-        { latitude: 35.0, longitude: 135.0 },
-        { latitude: 35.1, longitude: 135.1 },
-        'transit',
-      ),
+      travelEstimateSource: 'manual',
     });
     renderRow({ fromPlace: from });
-    expect(screen.getByText('（参考）')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Google Mapsで確認/ })).toBeInTheDocument();
+    expect(screen.getByText(/20分/)).toBeInTheDocument();
+    expect(screen.getByText('手入力')).toBeInTheDocument();
   });
 
   it('shows a stale notice when the auto estimate no longer matches the segment', () => {
@@ -183,28 +207,6 @@ describe('TravelLegRow', () => {
     await user.click(screen.getByRole('button', { name: /ルートを計算/ }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('利用上限');
-  });
-
-  it('shows a specific no-route message without clearing an existing manual time', async () => {
-    const user = userEvent.setup();
-    const route = vi.fn().mockRejectedValue(new RoutingError('no-route'));
-    const from = makePlace({
-      id: 'A',
-      name: 'A',
-      travelMinutes: 25,
-      travelEstimateSource: 'manual',
-    });
-    renderRow({ fromPlace: from, service: makeService({ route }) });
-
-    await user.selectOptions(screen.getByRole('combobox'), 'transit');
-    await user.click(screen.getByRole('button', { name: /再計算/ }));
-
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(
-      'この区間では公共交通ルートを取得できませんでした。徒歩・自動車・自転車、または移動時間の手入力をお試しください。',
-    );
-    expect(screen.getByText('手入力')).toBeInTheDocument();
-    expect(screen.getByText(/25分/)).toBeInTheDocument();
   });
 
   it('shows a saved auto result when the selected mode matches the saved mode', () => {

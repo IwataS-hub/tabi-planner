@@ -391,6 +391,8 @@ describe('route estimates (Phase 2.2)', () => {
     const edited = await placeRepository.update(a.id, { travelMinutes: 25 });
     expect(edited.travelMinutes).toBe(25);
     expect(edited.travelEstimateSource).toBe('manual');
+    // walk/drive/bicycle are auto-only, so the mode label is dropped on a
+    // manual edit (only 'transit' may persist as a manual mode label).
     expect(edited.travelMode).toBeNull();
     expect(edited.travelDistanceMeters).toBeNull();
     expect(edited.travelToPlaceId).toBeNull();
@@ -502,5 +504,58 @@ describe('corrupt data rejection', () => {
     } as unknown as PlaceRecord);
 
     await expect(placeRepository.listByTrip(tripId)).rejects.toThrow();
+  });
+});
+
+describe('selectTransit (Phase 2.2 → Google Maps)', () => {
+  it('marks a fresh leg as transit without inventing a time', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    await placeRepository.add({ tripId, dayId, ...coords(1) });
+
+    const updated = await placeRepository.selectTransit(a.id);
+    expect(updated.travelMode).toBe('transit');
+    expect(updated.travelMinutes).toBeNull();
+    expect(updated.travelEstimateSource).toBeNull();
+    expect(updated.travelDistanceMeters).toBeNull();
+    expect(updated.travelToPlaceId).toBeNull();
+    expect(updated.travelRouteKey).toBeNull();
+  });
+
+  it('keeps a manual time and tags it as transit (manual)', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await placeRepository.update(a.id, { travelMinutes: 20 });
+
+    const updated = await placeRepository.selectTransit(a.id);
+    expect(updated.travelMode).toBe('transit');
+    expect(updated.travelMinutes).toBe(20);
+    expect(updated.travelEstimateSource).toBe('manual');
+  });
+
+  it('does NOT overwrite a saved auto estimate (preserves the data)', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    const b = await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await saveWalkLeg(a, b); // a now has a walk auto estimate
+
+    const updated = await placeRepository.selectTransit(a.id);
+    expect(updated.travelEstimateSource).toBe('auto');
+    expect(updated.travelMode).toBe('walk');
+    expect(updated.travelMinutes).toBe(18);
+    expect(updated.travelDistanceMeters).toBe(1300);
+  });
+
+  it('keeps the transit tag through a later manual time entry', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await placeRepository.add({ tripId, dayId, ...coords(0) });
+    await placeRepository.add({ tripId, dayId, ...coords(1) });
+    await placeRepository.selectTransit(a.id);
+
+    const edited = await placeRepository.update(a.id, { travelMinutes: 30 });
+    expect(edited.travelMode).toBe('transit');
+    expect(edited.travelEstimateSource).toBe('manual');
+    expect(edited.travelMinutes).toBe(30);
   });
 });

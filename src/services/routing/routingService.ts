@@ -33,6 +33,12 @@ export class CachingRoutingService implements RoutingProvider {
   }
 
   async route(request: RouteRequest): Promise<RouteEstimate> {
+    // Public transit is not auto-routed via Geoapify; the UI opens Google Maps
+    // instead. Reject here so no transit request can reach the provider/network,
+    // even if a caller bypasses the UI guard.
+    if (request.mode === 'transit') {
+      throw new RoutingError('no-route');
+    }
     const key = routeKey(request.from, request.to, request.mode);
     const cached = this.cache.get(key);
     if (cached) return cached;

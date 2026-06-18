@@ -115,7 +115,10 @@ test('a manual travel-time edit clears the auto metadata', async ({ page }) => {
   await expect(page.getByText('自動', { exact: true })).toBeVisible();
 
   // Open the first spot's editor and type a manual travel time.
-  await page.getByRole('button', { name: /名称未設定/, expanded: false }).first().click();
+  await page
+    .getByRole('button', { name: /名称未設定/, expanded: false })
+    .first()
+    .click();
   await page.getByLabel('次への移動（分）').fill('25');
 
   // The leg now reflects a manual value; the auto badge is gone.
@@ -142,17 +145,27 @@ test('a failed route calculation shows an inline error and keeps the itinerary',
   await expect(page.getByText('名称未設定').first()).toBeVisible();
 });
 
-test('a transit no-route response shows guidance without drawing geometry', async ({ page }) => {
-  const counter = await mockGeoapify(page, 'no-route');
-  await createTripWithTwoSpots(page, '公共交通結果なしの旅');
+test('public transit links out to Google Maps and never calls Geoapify', async ({ page }) => {
+  const counter = await mockGeoapify(page, 'ok');
+  await createTripWithTwoSpots(page, '公共交通の旅');
 
   await page.getByLabel(/移動手段/).selectOption('transit');
-  await page.getByRole('button', { name: /ルートを計算/ }).click();
 
-  await expect(page.getByRole('alert')).toContainText(
-    'この区間では公共交通ルートを取得できませんでした。徒歩・自動車・自転車、または移動時間の手入力をお試しください。',
-  );
-  expect(counter.routingCalls).toBe(1);
+  // No calculate/recalculate button for transit — a Google Maps link instead.
+  await expect(page.getByRole('button', { name: /ルートを計算|再計算/ })).toHaveCount(0);
+  const link = page.getByRole('link', { name: /Google Mapsで確認/ });
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute('href');
+  expect(href).toContain('https://www.google.com/maps/dir/');
+  expect(href).toContain('api=1');
+  expect(href).toContain('travelmode=transit');
+  expect(href).not.toContain('apiKey');
+  await expect(
+    page.getByText('公共交通の時刻・乗換経路はGoogle Mapsで確認し、移動時間を手入力してください。'),
+  ).toBeVisible();
+
+  // Geoapify routing must never be called for transit; no route is drawn.
+  await page.waitForTimeout(200);
+  expect(counter.routingCalls).toBe(0);
   await expect(page.locator('.leaflet-overlay-pane path[stroke="#2f6f8f"]')).toHaveCount(0);
-  await expect(page.getByText('名称未設定').first()).toBeVisible();
 });
