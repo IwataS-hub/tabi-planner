@@ -129,4 +129,33 @@ describe('fetchTripWeather', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce();
   });
+
+  it('clamps endDate to today + 15 when trip extends beyond forecast window', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(stubWeather);
+    setWeatherProvider({ fetchWeather: mockFetch });
+
+    const farFuture = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
+    await fetchTripWeather(coordinate, today, farFuture, today);
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const req = mockFetch.mock.calls[0][0];
+    // endDate must be at most today + 15 days
+    const maxDate = new Date(Date.now() + 15 * 86_400_000).toISOString().slice(0, 10);
+    expect(req.endDate <= maxDate).toBe(true);
+    expect(req.endDate >= today).toBe(true);
+  });
+
+  it('throws out-of-range when entire trip is more than 15 days ahead', async () => {
+    const start = new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 25 * 86_400_000).toISOString().slice(0, 10);
+    await expect(fetchTripWeather(coordinate, start, end, today)).rejects.toBeInstanceOf(
+      WeatherError,
+    );
+  });
+
+  it('throws out-of-range when entire trip is in the past', async () => {
+    await expect(
+      fetchTripWeather(coordinate, '2025-01-01', '2025-01-05', today),
+    ).rejects.toBeInstanceOf(WeatherError);
+  });
 });

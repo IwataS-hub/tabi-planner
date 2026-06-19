@@ -394,7 +394,12 @@ export const tripRepository = {
                       travelCalculatedAt: null,
                     }
                   : {
-                      travelMode: null,
+                      // Preserve transit mode for manual transit entries; drop
+                      // walk/drive/bicycle since those come from auto estimation.
+                      travelMode:
+                        place.travelEstimateSource === 'manual' && place.travelMode === 'transit'
+                          ? ('transit' as const)
+                          : null,
                       travelDistanceMeters: null,
                       travelToPlaceId: null,
                       travelRouteKey: null,
@@ -463,7 +468,12 @@ export const tripRepository = {
         for (const s of backup.expenseShares) {
           const newExpenseId = expenseIdMap.get(s.expenseId);
           const newParticipantId = participantIdMap.get(s.participantId);
-          if (!newExpenseId || !newParticipantId) continue; // skip orphaned shares
+          if (!newExpenseId) {
+            throw new Error(`費用分担が参照する費用が見つかりません: ${s.expenseId}`);
+          }
+          if (!newParticipantId) {
+            throw new Error(`費用分担が参照する参加者が見つかりません: ${s.participantId}`);
+          }
           newShares.push(
             validateRecord(
               expenseShareRecordSchema,

@@ -37,6 +37,58 @@ function toShare(record: ExpenseShareRecord): ExpenseShare {
   return expenseShareFromRecord(validateRecord(expenseShareRecordSchema, record, '費用分担データ'));
 }
 
+async function validateExpenseConstraints(
+  draft: {
+    amountYen: number;
+    shares: ShareInput[];
+    payerId: string;
+    dayId: string | null;
+    placeId: string | null;
+  },
+  tripId: string,
+): Promise<void> {
+  if (!Number.isInteger(draft.amountYen) || draft.amountYen < 0) {
+    throw new Error('費用額は0以上の整数である必要があります');
+  }
+  if (draft.shares.length === 0) {
+    throw new Error('費用の分担者が設定されていません');
+  }
+  const shareSum = draft.shares.reduce((sum, s) => sum + s.amountYen, 0);
+  if (shareSum !== draft.amountYen) {
+    throw new Error(`分担合計（${shareSum}円）が費用額（${draft.amountYen}円）と一致しません`);
+  }
+  const shareParticipantIds = draft.shares.map((s) => s.participantId);
+  if (new Set(shareParticipantIds).size !== shareParticipantIds.length) {
+    throw new Error('費用の分担者に重複があります');
+  }
+
+  const participants = await db.participants.where('tripId').equals(tripId).toArray();
+  const participantIds = new Set(participants.map((p) => p.id));
+
+  if (!participantIds.has(draft.payerId)) {
+    throw new Error('費用の支払者が参加者として見つかりません');
+  }
+  for (const share of draft.shares) {
+    if (!participantIds.has(share.participantId)) {
+      throw new Error('費用の分担者が参加者として見つかりません');
+    }
+  }
+
+  if (draft.dayId != null) {
+    const day = await db.days.get(draft.dayId);
+    if (!day || day.tripId !== tripId) {
+      throw new Error('指定された日付が旅行に存在しません');
+    }
+  }
+
+  if (draft.placeId != null) {
+    const place = await db.places.get(draft.placeId);
+    if (!place || place.tripId !== tripId) {
+      throw new Error('指定されたスポットが旅行に存在しません');
+    }
+  }
+}
+
 function buildShareRecords(expenseId: string, shares: ShareInput[]): ExpenseShareRecord[] {
   return shares.map((s) =>
     validateRecord(
@@ -98,29 +150,37 @@ export const expenseRepository = {
   async add(draft: ExpenseDraft): Promise<ExpenseWithShares> {
     const now = nowIso();
     const id = createId();
-    const expenseRecord = validateRecord(
-      expenseRecordSchema,
-      {
-        id,
-        tripId: draft.tripId,
-        dayId: draft.dayId,
-        placeId: draft.placeId,
-        title: draft.title.trim(),
-        amountYen: draft.amountYen,
-        category: draft.category,
-        payerId: draft.payerId,
-        occurredAt: draft.occurredAt,
-        memo: draft.memo,
-        createdAt: now,
-        updatedAt: now,
+    let expenseRecord: ExpenseRecord | undefined;
+    let shareRecords: ExpenseShareRecord[] = [];
+    await db.transaction(
+      'rw',
+      [db.expenses, db.expenseShares, db.participants, db.days, db.places],
+      async () => {
+        await validateExpenseConstraints(draft, draft.tripId);
+        expenseRecord = validateRecord(
+          expenseRecordSchema,
+          {
+            id,
+            tripId: draft.tripId,
+            dayId: draft.dayId,
+            placeId: draft.placeId,
+            title: draft.title.trim(),
+            amountYen: draft.amountYen,
+            category: draft.category,
+            payerId: draft.payerId,
+            occurredAt: draft.occurredAt,
+            memo: draft.memo,
+            createdAt: now,
+            updatedAt: now,
+          },
+          '費用の追加',
+        );
+        shareRecords = buildShareRecords(id, draft.shares);
+        await db.expenses.add(expenseRecord);
+        if (shareRecords.length > 0) await db.expenseShares.bulkAdd(shareRecords);
       },
-      '費用の追加',
     );
-    const shareRecords = buildShareRecords(id, draft.shares);
-    await db.transaction('rw', db.expenses, db.expenseShares, async () => {
-      await db.expenses.add(expenseRecord);
-      if (shareRecords.length > 0) await db.expenseShares.bulkAdd(shareRecords);
-    });
+    if (!expenseRecord) throw new Error('費用の追加に失敗しました');
     return { expense: toExpense(expenseRecord), shares: shareRecords.map(toShare) };
   },
 
@@ -128,30 +188,35 @@ export const expenseRepository = {
   async update(id: string, patch: Omit<ExpenseDraft, 'tripId'>): Promise<ExpenseWithShares> {
     let saved: ExpenseRecord | undefined;
     let savedShares: ExpenseShareRecord[] = [];
-    await db.transaction('rw', db.expenses, db.expenseShares, async () => {
-      const existing = await db.expenses.get(id);
-      if (!existing) throw new Error(`費用が見つかりません: ${id}`);
-      saved = validateRecord(
-        expenseRecordSchema,
-        {
-          ...existing,
-          dayId: patch.dayId,
-          placeId: patch.placeId,
-          title: patch.title.trim(),
-          amountYen: patch.amountYen,
-          category: patch.category,
-          payerId: patch.payerId,
-          occurredAt: patch.occurredAt,
-          memo: patch.memo,
-          updatedAt: nowIso(),
-        },
-        '費用の更新',
-      );
-      await db.expenses.put(saved);
-      await db.expenseShares.where('expenseId').equals(id).delete();
-      savedShares = buildShareRecords(id, patch.shares);
-      if (savedShares.length > 0) await db.expenseShares.bulkAdd(savedShares);
-    });
+    await db.transaction(
+      'rw',
+      [db.expenses, db.expenseShares, db.participants, db.days, db.places],
+      async () => {
+        const existing = await db.expenses.get(id);
+        if (!existing) throw new Error(`費用が見つかりません: ${id}`);
+        await validateExpenseConstraints(patch, existing.tripId);
+        saved = validateRecord(
+          expenseRecordSchema,
+          {
+            ...existing,
+            dayId: patch.dayId,
+            placeId: patch.placeId,
+            title: patch.title.trim(),
+            amountYen: patch.amountYen,
+            category: patch.category,
+            payerId: patch.payerId,
+            occurredAt: patch.occurredAt,
+            memo: patch.memo,
+            updatedAt: nowIso(),
+          },
+          '費用の更新',
+        );
+        await db.expenses.put(saved);
+        await db.expenseShares.where('expenseId').equals(id).delete();
+        savedShares = buildShareRecords(id, patch.shares);
+        if (savedShares.length > 0) await db.expenseShares.bulkAdd(savedShares);
+      },
+    );
     if (!saved) throw new Error('費用の更新に失敗しました');
     return { expense: toExpense(saved), shares: savedShares.map(toShare) };
   },

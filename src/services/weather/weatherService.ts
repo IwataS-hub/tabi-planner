@@ -1,6 +1,6 @@
 import type { TripWeather } from '@/domain/weather';
-import { isDateInForecastRange } from '@/domain/weather';
 import type { LatLng, Place, TripDay } from '@/domain/types';
+import { parseISODate, toISODate } from '@/lib/date';
 import { OpenMeteoWeatherProvider } from './OpenMeteoWeatherProvider';
 import type { WeatherProvider } from './WeatherProvider';
 import {
@@ -70,17 +70,21 @@ export async function fetchTripWeather(
   today: string,
   signal?: AbortSignal,
 ): Promise<TripWeather | null> {
-  // Check that at least some dates are in forecast range
-  if (!isDateInForecastRange(startDate, today) && !isDateInForecastRange(endDate, today)) {
+  // Clamp start to today and end to the 16-day forecast window (today + 15 days)
+  const clampedStart = startDate < today ? today : startDate;
+  const maxForecastDate = toISODate(
+    new Date(parseISODate(today).setDate(parseISODate(today).getDate() + 15)),
+  );
+  const clampedEnd = endDate > maxForecastDate ? maxForecastDate : endDate;
+
+  if (clampedStart > clampedEnd) {
     throw new WeatherError(
       'out-of-range',
       '旅行日程が天気予報の範囲外です（現在から16日以内の日程のみ対応）',
     );
   }
 
-  // Clamp to forecast range
-  const clampedStart = startDate < today ? today : startDate;
-  const key = weatherCacheKey(coordinate.latitude, coordinate.longitude, clampedStart, endDate);
+  const key = weatherCacheKey(coordinate.latitude, coordinate.longitude, clampedStart, clampedEnd);
 
   const cached = getCachedWeather(key);
   if (cached) return cached;
@@ -90,7 +94,7 @@ export async function fetchTripWeather(
 
   const provider = getWeatherProvider();
   const promise = provider
-    .fetchWeather({ coordinate, startDate: clampedStart, endDate, signal })
+    .fetchWeather({ coordinate, startDate: clampedStart, endDate: clampedEnd, signal })
     .then((weather) => {
       setCachedWeather(key, weather);
       return weather;

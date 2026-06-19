@@ -86,10 +86,10 @@ describe('WeatherWidget', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders nothing when trip is out of forecast range', async () => {
+  it('shows out-of-range message when trip is entirely outside the forecast window', async () => {
     const days = [makeDay('d1', '2025-01-01')];
     const places = [makePlace('p1', 'd1')];
-    const { container } = render(
+    render(
       <WeatherWidget
         days={days}
         places={places}
@@ -98,9 +98,8 @@ describe('WeatherWidget', () => {
         tripEndDate="2025-01-02"
       />,
     );
-    // Should not render (out of range = render null)
     await waitFor(() => {
-      expect(container.firstChild).toBeNull();
+      expect(screen.getByText(/予報範囲外/)).toBeInTheDocument();
     });
   });
 
@@ -162,6 +161,74 @@ describe('WeatherWidget', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '天気を更新' }));
     await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it('uses selected day coordinate when selectedDayId is provided', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(stubWeather);
+    setWeatherProvider({ fetchWeather: mockFetch });
+    const days = [makeDay('d1', today), makeDay('d2', tomorrow)];
+    const places = [makePlace('p1', 'd1', 35.0, 135.0), makePlace('p2', 'd2', 34.0, 136.0)];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d2"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledOnce());
+    const req = mockFetch.mock.calls[0][0];
+    expect(req.coordinate.latitude).toBeCloseTo(34.0);
+    expect(req.coordinate.longitude).toBeCloseTo(136.0);
+  });
+
+  it('clears stale weather and re-fetches when the representative coord changes', async () => {
+    const day1Weather = { ...stubDayWeather, date: today };
+    const day2Weather = { ...stubDayWeather, date: tomorrow };
+    const weather1: typeof stubWeather = {
+      ...stubWeather,
+      latitude: 35.0,
+      longitude: 135.0,
+      daily: [day1Weather],
+    };
+    const weather2: typeof stubWeather = {
+      ...stubWeather,
+      latitude: 34.0,
+      longitude: 136.0,
+      daily: [day2Weather],
+    };
+    const mockFetch = vi.fn().mockResolvedValueOnce(weather1).mockResolvedValueOnce(weather2);
+    setWeatherProvider({ fetchWeather: mockFetch });
+
+    const days = [makeDay('d1', today), makeDay('d2', tomorrow)];
+    const p1 = makePlace('p1', 'd1', 35.0, 135.0);
+    const p2 = makePlace('p2', 'd2', 34.0, 136.0);
+
+    const { rerender } = render(
+      <WeatherWidget
+        days={days}
+        places={[p1, p2]}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+
+    // Switch to day 2 → coord changes → should re-fetch
+    rerender(
+      <WeatherWidget
+        days={days}
+        places={[p1, p2]}
+        selectedDayId="d2"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    const req2 = mockFetch.mock.calls[1][0];
+    expect(req2.coordinate.latitude).toBeCloseTo(34.0);
   });
 
   it('shows hourly snippet for a place with startTime', async () => {

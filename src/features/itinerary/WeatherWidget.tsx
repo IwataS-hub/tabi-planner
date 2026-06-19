@@ -2,12 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw, AlertCircle, CloudOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { TripWeather, DayWeather, HourlyWeather, WeatherAdvice } from '@/domain/weather';
-import {
-  wmoDescription,
-  getWeatherAdvice,
-  adviceMessages,
-  isDateInForecastRange,
-} from '@/domain/weather';
+import { wmoDescription, getWeatherAdvice, adviceMessages } from '@/domain/weather';
 import type { Place, TripDay } from '@/domain/types';
 import { clearWeatherCache } from '@/services/weather/weatherCache';
 import { fetchTripWeather, representativeCoordinate } from '@/services/weather/weatherService';
@@ -176,25 +171,19 @@ export function WeatherWidget({
     days.map((d) => [d.id, places.filter((p) => p.dayId === d.id)]),
   );
 
-  const coord = representativeCoordinate(days, placesByDay);
+  const coord = representativeCoordinate(days, placesByDay, selectedDayId ?? undefined);
   const hasCoord = coord != null && coord.latitude != null && coord.longitude != null;
 
   const load = useCallback(
     async (force = false) => {
       if (!hasCoord) return;
       const today = todayJst();
-      if (
-        !isDateInForecastRange(tripStartDate, today) &&
-        !isDateInForecastRange(tripEndDate, today)
-      ) {
-        setStatus('out-of-range');
-        return;
-      }
       if (force) clearWeatherCache();
       abortRef.current?.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
       setStatus('loading');
+      setWeather(null);
       try {
         const result = await fetchTripWeather(
           coord!,
@@ -221,19 +210,29 @@ export function WeatherWidget({
   );
 
   useEffect(() => {
-    if (status === 'idle' && hasCoord) {
+    if (hasCoord) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       void load();
     }
     return () => {
       abortRef.current?.abort();
     };
-    // Run once on mount (or when coord/dates change significantly)
+    // Re-fetch whenever the representative coordinate or date range changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasCoord, tripStartDate, tripEndDate, coord?.latitude, coord?.longitude]);
 
   if (!hasCoord) return null;
-  if (status === 'out-of-range') return null;
+
+  if (status === 'out-of-range') {
+    return (
+      <div className="border-border rounded-xl border bg-sky-50/60 px-3 py-2.5 text-sm">
+        <div className="text-ink-soft flex items-center gap-1.5 text-xs">
+          <CloudOff className="size-3.5 shrink-0" aria-hidden />
+          予報範囲外です（旅行日程が現在から16日以内の場合のみ天気予報を表示します）
+        </div>
+      </div>
+    );
+  }
 
   const selectedDay = days.find((d) => d.id === selectedDayId);
   const dayWeather = weather?.daily.find((d) => d.date === selectedDay?.date) ?? null;
