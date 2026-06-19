@@ -176,9 +176,9 @@ function weatherErrorMessage(err: unknown): string {
   if (err instanceof WeatherError) {
     switch (err.kind) {
       case 'network':
-        return '天気APIに接続できませんでした';
+        return '天気APIに接続できませんでした。通信環境やブラウザ拡張を確認してください。';
       case 'timeout':
-        return '天気APIへの接続がタイムアウトしました';
+        return '天気APIへの接続がタイムアウトしました。時間をおいて再試行してください。';
       case 'server':
         return err.message;
       case 'invalid-response':
@@ -236,6 +236,8 @@ export function WeatherWidget({
         if (ctrl.signal.aborted) return;
         if (err instanceof WeatherError && err.kind === 'out-of-range') {
           setStatus('out-of-range');
+        } else if (err instanceof WeatherError && err.kind === 'aborted') {
+          // Don't update UI for aborted fetches
         } else {
           setErrorMessage(weatherErrorMessage(err));
           setStatus('error');

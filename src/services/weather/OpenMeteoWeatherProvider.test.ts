@@ -41,6 +41,26 @@ function makeValidBody(
   };
 }
 
+function makeFallbackBody() {
+  return {
+    latitude: 35.011,
+    longitude: 135.768,
+    timezone: 'Asia/Tokyo',
+    daily: {
+      time: [today, tomorrow],
+      weather_code: [0, 61],
+      temperature_2m_max: [28, 22],
+      temperature_2m_min: [20, 18],
+      precipitation_sum: [0, 5],
+    },
+    hourly: {
+      time: [`${today}T00:00`, `${today}T01:00`],
+      temperature_2m: [21, 20],
+      precipitation_probability: [10, 0],
+    },
+  };
+}
+
 function mockOk(body: unknown) {
   return vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
 }
@@ -189,5 +209,157 @@ describe('OpenMeteoWeatherProvider', () => {
       .catch((e: unknown) => e);
     expect((err as WeatherError).message).not.toContain('35.011');
     expect((err as WeatherError).message).not.toContain('api.open-meteo.com');
+  });
+});
+
+describe('OpenMeteoWeatherProvider – abort/timeout classification', () => {
+  it('classifies string abort reason "timeout" as WeatherError(timeout)', async () => {
+    const mockFetch = vi.fn().mockRejectedValue('timeout');
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const err = await provider
+      .fetchWeather({ coordinate: coord, startDate: today, endDate: tomorrow })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WeatherError);
+    expect((err as WeatherError).kind).toBe('timeout');
+  });
+
+  it('classifies DOMException AbortError from outer signal as WeatherError(aborted)', async () => {
+    const outerController = new AbortController();
+    outerController.abort();
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValue(new DOMException('The user aborted a request.', 'AbortError'));
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const err = await provider
+      .fetchWeather({
+        coordinate: coord,
+        startDate: today,
+        endDate: tomorrow,
+        signal: outerController.signal,
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WeatherError);
+    expect((err as WeatherError).kind).toBe('aborted');
+  });
+
+  it('classifies Error with name TimeoutError as WeatherError(timeout)', async () => {
+    const timeoutErr = Object.assign(new Error('timeout'), { name: 'TimeoutError' });
+    const mockFetch = vi.fn().mockRejectedValue(timeoutErr);
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const err = await provider
+      .fetchWeather({ coordinate: coord, startDate: today, endDate: tomorrow })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WeatherError);
+    expect((err as WeatherError).kind).toBe('timeout');
+  });
+});
+
+describe('OpenMeteoWeatherProvider – fallback request', () => {
+  it('returns TripWeather from fallback when primary request times out', async () => {
+    const fallback = makeFallbackBody();
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValueOnce('timeout')
+      .mockResolvedValueOnce(new Response(JSON.stringify(fallback), { status: 200 }));
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const result = await provider.fetchWeather({
+      coordinate: coord,
+      startDate: today,
+      endDate: tomorrow,
+    });
+    expect(result).toBeDefined();
+    expect(result.daily).toHaveLength(2);
+    expect(result.daily[0].date).toBe(today);
+  });
+
+  it('returns TripWeather from fallback when primary response is invalid', async () => {
+    const fallback = makeFallbackBody();
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('not json', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(fallback), { status: 200 }));
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const result = await provider.fetchWeather({
+      coordinate: coord,
+      startDate: today,
+      endDate: tomorrow,
+    });
+    expect(result).toBeDefined();
+    expect(result.daily.length).toBeGreaterThan(0);
+  });
+
+  it('fallback URL contains only lightweight daily and hourly variables', async () => {
+    const capturedUrls: string[] = [];
+    const fallback = makeFallbackBody();
+    const mockFetch = vi.fn().mockImplementation((url: string) => {
+      capturedUrls.push(url);
+      if (capturedUrls.length === 1) return Promise.reject('timeout');
+      return Promise.resolve(new Response(JSON.stringify(fallback), { status: 200 }));
+    });
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    await provider.fetchWeather({ coordinate: coord, startDate: today, endDate: tomorrow });
+    expect(capturedUrls).toHaveLength(2);
+    const fallbackUrl = capturedUrls[1];
+    expect(fallbackUrl).toContain('temperature_2m_max');
+    expect(fallbackUrl).toContain('precipitation_sum');
+    expect(fallbackUrl).toContain('precipitation_probability');
+    expect(fallbackUrl).not.toContain('apparent_temperature');
+    expect(fallbackUrl).not.toContain('uv_index_max');
+    expect(fallbackUrl).not.toContain('sunrise');
+    expect(fallbackUrl).not.toContain('wind_speed_10m');
+  });
+
+  it('sets null for optional fields absent in fallback response', async () => {
+    const fallback = makeFallbackBody();
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValueOnce('timeout')
+      .mockResolvedValueOnce(new Response(JSON.stringify(fallback), { status: 200 }));
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const result = await provider.fetchWeather({
+      coordinate: coord,
+      startDate: today,
+      endDate: tomorrow,
+    });
+    expect(result.daily[0].uvIndexMax).toBeNull();
+    expect(result.daily[0].apparentTempMaxC).toBeNull();
+    expect(result.daily[0].windSpeedMaxKmh).toBeNull();
+    expect(result.daily[0].sunrise).toBeNull();
+    expect(result.daily[0].tempMaxC).toBe(28);
+    expect(result.daily[0].weatherCode).toBe(0);
+    expect(result.hourly[0].apparentTempC).toBeNull();
+    expect(result.hourly[0].weatherCode).toBeNull();
+    expect(result.hourly[0].windSpeedKmh).toBeNull();
+    expect(result.hourly[0].tempC).toBe(21);
+    expect(result.hourly[0].precipProbability).toBe(10);
+  });
+
+  it('throws original WeatherError when both primary and fallback fail', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    const err = await provider
+      .fetchWeather({ coordinate: coord, startDate: today, endDate: tomorrow })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(WeatherError);
+    expect((err as WeatherError).kind).toBe('network');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not attempt fallback for aborted requests', async () => {
+    const outerController = new AbortController();
+    outerController.abort();
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValue(new DOMException('The user aborted a request.', 'AbortError'));
+    const provider = new OpenMeteoWeatherProvider(mockFetch as typeof fetch);
+    await provider
+      .fetchWeather({
+        coordinate: coord,
+        startDate: today,
+        endDate: tomorrow,
+        signal: outerController.signal,
+      })
+      .catch(() => {});
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

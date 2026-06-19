@@ -44,26 +44,26 @@ const nullableStringArray = z.array(z.string().nullable());
 
 export const dailyWeatherSchema = z.object({
   time: z.array(z.string()),
-  weather_code: nullableNumberArray,
-  temperature_2m_max: nullableNumberArray,
-  temperature_2m_min: nullableNumberArray,
-  apparent_temperature_max: nullableNumberArray,
-  apparent_temperature_min: nullableNumberArray,
-  precipitation_sum: nullableNumberArray,
-  precipitation_probability_max: nullableNumberArray,
-  wind_speed_10m_max: nullableNumberArray,
-  uv_index_max: nullableNumberArray,
-  sunrise: nullableStringArray,
-  sunset: nullableStringArray,
+  weather_code: nullableNumberArray.optional(),
+  temperature_2m_max: nullableNumberArray.optional(),
+  temperature_2m_min: nullableNumberArray.optional(),
+  apparent_temperature_max: nullableNumberArray.optional(),
+  apparent_temperature_min: nullableNumberArray.optional(),
+  precipitation_sum: nullableNumberArray.optional(),
+  precipitation_probability_max: nullableNumberArray.optional(),
+  wind_speed_10m_max: nullableNumberArray.optional(),
+  uv_index_max: nullableNumberArray.optional(),
+  sunrise: nullableStringArray.optional(),
+  sunset: nullableStringArray.optional(),
 });
 
 export const hourlyWeatherSchema = z.object({
   time: z.array(z.string()),
-  temperature_2m: nullableNumberArray,
-  apparent_temperature: nullableNumberArray,
-  precipitation_probability: nullableNumberArray,
-  weather_code: nullableNumberArray,
-  wind_speed_10m: nullableNumberArray,
+  temperature_2m: nullableNumberArray.optional(),
+  apparent_temperature: nullableNumberArray.optional(),
+  precipitation_probability: nullableNumberArray.optional(),
+  weather_code: nullableNumberArray.optional(),
+  wind_speed_10m: nullableNumberArray.optional(),
 });
 
 export const openMeteoResponseSchema = z.object({
@@ -133,17 +133,17 @@ export function parseDailyWeather(raw: z.infer<typeof dailyWeatherSchema>): DayW
   for (let i = 0; i < len; i += 1) {
     results.push({
       date: raw.time[i],
-      weatherCode: raw.weather_code[i] ?? null,
-      tempMaxC: raw.temperature_2m_max[i] ?? null,
-      tempMinC: raw.temperature_2m_min[i] ?? null,
-      apparentTempMaxC: raw.apparent_temperature_max[i] ?? null,
-      apparentTempMinC: raw.apparent_temperature_min[i] ?? null,
-      precipitationMm: raw.precipitation_sum[i] ?? null,
-      precipProbabilityMax: raw.precipitation_probability_max[i] ?? null,
-      windSpeedMaxKmh: raw.wind_speed_10m_max[i] ?? null,
-      uvIndexMax: raw.uv_index_max[i] ?? null,
-      sunrise: raw.sunrise[i] ?? null,
-      sunset: raw.sunset[i] ?? null,
+      weatherCode: raw.weather_code?.[i] ?? null,
+      tempMaxC: raw.temperature_2m_max?.[i] ?? null,
+      tempMinC: raw.temperature_2m_min?.[i] ?? null,
+      apparentTempMaxC: raw.apparent_temperature_max?.[i] ?? null,
+      apparentTempMinC: raw.apparent_temperature_min?.[i] ?? null,
+      precipitationMm: raw.precipitation_sum?.[i] ?? null,
+      precipProbabilityMax: raw.precipitation_probability_max?.[i] ?? null,
+      windSpeedMaxKmh: raw.wind_speed_10m_max?.[i] ?? null,
+      uvIndexMax: raw.uv_index_max?.[i] ?? null,
+      sunrise: raw.sunrise?.[i] ?? null,
+      sunset: raw.sunset?.[i] ?? null,
     });
   }
   return results;
@@ -155,11 +155,11 @@ export function parseHourlyWeather(raw: z.infer<typeof hourlyWeatherSchema>): Ho
   for (let i = 0; i < len; i += 1) {
     results.push({
       time: raw.time[i],
-      tempC: raw.temperature_2m[i] ?? null,
-      apparentTempC: raw.apparent_temperature[i] ?? null,
-      precipProbability: raw.precipitation_probability[i] ?? null,
-      weatherCode: raw.weather_code[i] ?? null,
-      windSpeedKmh: raw.wind_speed_10m[i] ?? null,
+      tempC: raw.temperature_2m?.[i] ?? null,
+      apparentTempC: raw.apparent_temperature?.[i] ?? null,
+      precipProbability: raw.precipitation_probability?.[i] ?? null,
+      weatherCode: raw.weather_code?.[i] ?? null,
+      windSpeedKmh: raw.wind_speed_10m?.[i] ?? null,
     });
   }
   return results;

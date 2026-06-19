@@ -328,4 +328,70 @@ describe('WeatherWidget', () => {
       expect(screen.getByText(/天気APIに接続できませんでした/)).toBeInTheDocument();
     });
   });
+
+  it('shows network error with connectivity guidance text', async () => {
+    const { WeatherError: WErr } = await import('@/services/weather/weatherErrors');
+    setWeatherProvider({
+      fetchWeather: vi.fn().mockRejectedValue(new WErr('network', '天気APIに接続できませんでした')),
+    });
+    const days = [makeDay('d1', today)];
+    const places = [makePlace('p1', 'd1')];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/通信環境やブラウザ拡張を確認してください/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows timeout error with retry guidance text', async () => {
+    const { WeatherError: WErr } = await import('@/services/weather/weatherErrors');
+    setWeatherProvider({
+      fetchWeather: vi
+        .fn()
+        .mockRejectedValue(new WErr('timeout', '天気APIへの接続がタイムアウトしました')),
+    });
+    const days = [makeDay('d1', today)];
+    const places = [makePlace('p1', 'd1')];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/時間をおいて再試行してください/)).toBeInTheDocument();
+    });
+  });
+
+  it('does not show error message when provider throws WeatherError(aborted)', async () => {
+    const { WeatherError: WErr } = await import('@/services/weather/weatherErrors');
+    const mockFetch = vi
+      .fn()
+      .mockRejectedValue(new WErr('aborted', '天気情報の取得がキャンセルされました'));
+    setWeatherProvider({ fetchWeather: mockFetch });
+    const days = [makeDay('d1', today)];
+    const places = [makePlace('p1', 'd1')];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(screen.queryByText(/キャンセル/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/失敗しました/)).not.toBeInTheDocument();
+  });
 });
