@@ -263,4 +263,69 @@ describe('WeatherWidget', () => {
       expect(screen.getByText(/金閣寺/)).toBeInTheDocument();
     });
   });
+
+  it('renders card without crashing when uvIndexMax and precipProbabilityMax are null', async () => {
+    const weatherWithNulls: TripWeather = {
+      ...stubWeather,
+      daily: [{ ...stubDayWeather, uvIndexMax: null, precipProbabilityMax: null }],
+    };
+    setWeatherProvider({ fetchWeather: vi.fn().mockResolvedValue(weatherWithNulls) });
+    const days = [makeDay('d1', today)];
+    const places = [makePlace('p1', 'd1')];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('天気予報')).toBeInTheDocument());
+    // Card must still be visible and must not render "null" literals
+    expect(screen.queryByText(/UVnull/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/null%/)).not.toBeInTheDocument();
+  });
+
+  it('shows — placeholder for null windSpeedMaxKmh', async () => {
+    const weatherWithNullWind: TripWeather = {
+      ...stubWeather,
+      daily: [{ ...stubDayWeather, windSpeedMaxKmh: null }],
+    };
+    setWeatherProvider({ fetchWeather: vi.fn().mockResolvedValue(weatherWithNullWind) });
+    const days = [makeDay('d1', today)];
+    const places = [makePlace('p1', 'd1')];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText('天気予報')).toBeInTheDocument());
+    expect(screen.queryByText(/nullkm\/h/)).not.toBeInTheDocument();
+  });
+
+  it('shows network error message when provider throws WeatherError(network)', async () => {
+    const { WeatherError: WErr } = await import('@/services/weather/weatherErrors');
+    setWeatherProvider({
+      fetchWeather: vi.fn().mockRejectedValue(new WErr('network', '天気APIに接続できませんでした')),
+    });
+    const days = [makeDay('d1', today)];
+    const places = [makePlace('p1', 'd1')];
+    render(
+      <WeatherWidget
+        days={days}
+        places={places}
+        selectedDayId="d1"
+        tripStartDate={today}
+        tripEndDate={tomorrow}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/天気APIに接続できませんでした/)).toBeInTheDocument();
+    });
+  });
 });

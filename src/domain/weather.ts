@@ -36,28 +36,34 @@ export function wmoDescription(code: number): string {
 // Zod schemas for Open-Meteo API responses
 // ---------------------------------------------------------------------------
 
+// Numeric arrays allow null because some variables are unavailable for certain
+// locations or models (e.g. uv_index_max over open ocean, precipitation_probability
+// for certain grid points). The time array is always required and non-null.
+const nullableNumberArray = z.array(z.number().nullable());
+const nullableStringArray = z.array(z.string().nullable());
+
 export const dailyWeatherSchema = z.object({
   time: z.array(z.string()),
-  weather_code: z.array(z.number()),
-  temperature_2m_max: z.array(z.number()),
-  temperature_2m_min: z.array(z.number()),
-  apparent_temperature_max: z.array(z.number()),
-  apparent_temperature_min: z.array(z.number()),
-  precipitation_sum: z.array(z.number()),
-  precipitation_probability_max: z.array(z.number()),
-  wind_speed_10m_max: z.array(z.number()),
-  uv_index_max: z.array(z.number()),
-  sunrise: z.array(z.string()),
-  sunset: z.array(z.string()),
+  weather_code: nullableNumberArray,
+  temperature_2m_max: nullableNumberArray,
+  temperature_2m_min: nullableNumberArray,
+  apparent_temperature_max: nullableNumberArray,
+  apparent_temperature_min: nullableNumberArray,
+  precipitation_sum: nullableNumberArray,
+  precipitation_probability_max: nullableNumberArray,
+  wind_speed_10m_max: nullableNumberArray,
+  uv_index_max: nullableNumberArray,
+  sunrise: nullableStringArray,
+  sunset: nullableStringArray,
 });
 
 export const hourlyWeatherSchema = z.object({
   time: z.array(z.string()),
-  temperature_2m: z.array(z.number()),
-  apparent_temperature: z.array(z.number()),
-  precipitation_probability: z.array(z.number()),
-  weather_code: z.array(z.number()),
-  wind_speed_10m: z.array(z.number()),
+  temperature_2m: nullableNumberArray,
+  apparent_temperature: nullableNumberArray,
+  precipitation_probability: nullableNumberArray,
+  weather_code: nullableNumberArray,
+  wind_speed_10m: nullableNumberArray,
 });
 
 export const openMeteoResponseSchema = z.object({
@@ -77,27 +83,27 @@ export type OpenMeteoResponse = z.infer<typeof openMeteoResponseSchema>;
 export interface DayWeather {
   /** YYYY-MM-DD */
   date: string;
-  weatherCode: number;
-  tempMaxC: number;
-  tempMinC: number;
-  apparentTempMaxC: number;
-  apparentTempMinC: number;
-  precipitationMm: number;
-  precipProbabilityMax: number;
-  windSpeedMaxKmh: number;
-  uvIndexMax: number;
-  sunrise: string;
-  sunset: string;
+  weatherCode: number | null;
+  tempMaxC: number | null;
+  tempMinC: number | null;
+  apparentTempMaxC: number | null;
+  apparentTempMinC: number | null;
+  precipitationMm: number | null;
+  precipProbabilityMax: number | null;
+  windSpeedMaxKmh: number | null;
+  uvIndexMax: number | null;
+  sunrise: string | null;
+  sunset: string | null;
 }
 
 export interface HourlyWeather {
   /** ISO 8601 e.g. "2025-07-01T09:00" */
   time: string;
-  tempC: number;
-  apparentTempC: number;
-  precipProbability: number;
-  weatherCode: number;
-  windSpeedKmh: number;
+  tempC: number | null;
+  apparentTempC: number | null;
+  precipProbability: number | null;
+  weatherCode: number | null;
+  windSpeedKmh: number | null;
 }
 
 export interface TripWeather {
@@ -127,17 +133,17 @@ export function parseDailyWeather(raw: z.infer<typeof dailyWeatherSchema>): DayW
   for (let i = 0; i < len; i += 1) {
     results.push({
       date: raw.time[i],
-      weatherCode: raw.weather_code[i] ?? 0,
-      tempMaxC: raw.temperature_2m_max[i] ?? 0,
-      tempMinC: raw.temperature_2m_min[i] ?? 0,
-      apparentTempMaxC: raw.apparent_temperature_max[i] ?? 0,
-      apparentTempMinC: raw.apparent_temperature_min[i] ?? 0,
-      precipitationMm: raw.precipitation_sum[i] ?? 0,
-      precipProbabilityMax: raw.precipitation_probability_max[i] ?? 0,
-      windSpeedMaxKmh: raw.wind_speed_10m_max[i] ?? 0,
-      uvIndexMax: raw.uv_index_max[i] ?? 0,
-      sunrise: raw.sunrise[i] ?? '',
-      sunset: raw.sunset[i] ?? '',
+      weatherCode: raw.weather_code[i] ?? null,
+      tempMaxC: raw.temperature_2m_max[i] ?? null,
+      tempMinC: raw.temperature_2m_min[i] ?? null,
+      apparentTempMaxC: raw.apparent_temperature_max[i] ?? null,
+      apparentTempMinC: raw.apparent_temperature_min[i] ?? null,
+      precipitationMm: raw.precipitation_sum[i] ?? null,
+      precipProbabilityMax: raw.precipitation_probability_max[i] ?? null,
+      windSpeedMaxKmh: raw.wind_speed_10m_max[i] ?? null,
+      uvIndexMax: raw.uv_index_max[i] ?? null,
+      sunrise: raw.sunrise[i] ?? null,
+      sunset: raw.sunset[i] ?? null,
     });
   }
   return results;
@@ -149,11 +155,11 @@ export function parseHourlyWeather(raw: z.infer<typeof hourlyWeatherSchema>): Ho
   for (let i = 0; i < len; i += 1) {
     results.push({
       time: raw.time[i],
-      tempC: raw.temperature_2m[i] ?? 0,
-      apparentTempC: raw.apparent_temperature[i] ?? 0,
-      precipProbability: raw.precipitation_probability[i] ?? 0,
-      weatherCode: raw.weather_code[i] ?? 0,
-      windSpeedKmh: raw.wind_speed_10m[i] ?? 0,
+      tempC: raw.temperature_2m[i] ?? null,
+      apparentTempC: raw.apparent_temperature[i] ?? null,
+      precipProbability: raw.precipitation_probability[i] ?? null,
+      weatherCode: raw.weather_code[i] ?? null,
+      windSpeedKmh: raw.wind_speed_10m[i] ?? null,
     });
   }
   return results;
@@ -161,16 +167,17 @@ export function parseHourlyWeather(raw: z.infer<typeof hourlyWeatherSchema>): Ho
 
 /**
  * Derive weather advice for a day. Thresholds are chosen for Japanese travel
- * context.
+ * context. Null values are treated conservatively (no warning when unknown,
+ * except cold where we assume warm when unknown).
  */
 export function getWeatherAdvice(day: DayWeather): WeatherAdvice {
   return {
-    umbrella: day.precipProbabilityMax >= 40 || day.precipitationMm > 1,
-    heavyRain: day.precipProbabilityMax >= 70 || day.precipitationMm > 10,
-    heat: day.apparentTempMaxC >= 35,
-    cold: day.apparentTempMinC < 5,
-    highUv: day.uvIndexMax >= 8,
-    strongWind: day.windSpeedMaxKmh >= 50,
+    umbrella: (day.precipProbabilityMax ?? 0) >= 40 || (day.precipitationMm ?? 0) > 1,
+    heavyRain: (day.precipProbabilityMax ?? 0) >= 70 || (day.precipitationMm ?? 0) > 10,
+    heat: (day.apparentTempMaxC ?? 0) >= 35,
+    cold: (day.apparentTempMinC ?? 100) < 5,
+    highUv: (day.uvIndexMax ?? 0) >= 8,
+    strongWind: (day.windSpeedMaxKmh ?? 0) >= 50,
   };
 }
 

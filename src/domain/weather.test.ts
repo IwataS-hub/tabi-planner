@@ -209,4 +209,91 @@ describe('openMeteoResponseSchema', () => {
     };
     expect(openMeteoResponseSchema.safeParse(valid).success).toBe(true);
   });
+
+  it('accepts null values in numeric arrays', () => {
+    const withNulls = {
+      latitude: 34.99,
+      longitude: 135.78,
+      timezone: 'Asia/Tokyo',
+      daily: {
+        time: ['2026-07-01'],
+        weather_code: [0],
+        temperature_2m_max: [28],
+        temperature_2m_min: [20],
+        apparent_temperature_max: [31],
+        apparent_temperature_min: [22],
+        precipitation_sum: [0],
+        precipitation_probability_max: [null],
+        wind_speed_10m_max: [15],
+        uv_index_max: [null],
+        sunrise: ['2026-07-01T04:45'],
+        sunset: ['2026-07-01T19:10'],
+      },
+      hourly: {
+        time: ['2026-07-01T00:00'],
+        temperature_2m: [21],
+        apparent_temperature: [20],
+        precipitation_probability: [null],
+        weather_code: [0],
+        wind_speed_10m: [5],
+      },
+    };
+    expect(openMeteoResponseSchema.safeParse(withNulls).success).toBe(true);
+  });
+
+  it('rejects responses where daily.time is absent', () => {
+    const noTime = {
+      latitude: 34.99,
+      longitude: 135.78,
+      timezone: 'Asia/Tokyo',
+      daily: { weather_code: [] },
+      hourly: { time: [] },
+    };
+    expect(openMeteoResponseSchema.safeParse(noTime).success).toBe(false);
+  });
+});
+
+describe('parseDailyWeather with null values', () => {
+  it('preserves null for uv_index_max and precipitation_probability_max', () => {
+    const raw = {
+      time: ['2026-07-01', '2026-07-02'],
+      weather_code: [0, 61],
+      temperature_2m_max: [28, 22],
+      temperature_2m_min: [20, 18],
+      apparent_temperature_max: [31, 23],
+      apparent_temperature_min: [22, 19],
+      precipitation_sum: [0, 5],
+      precipitation_probability_max: [null, 65],
+      wind_speed_10m_max: [15, 30],
+      uv_index_max: [null, 3],
+      sunrise: ['2026-07-01T04:45', '2026-07-02T04:46'],
+      sunset: ['2026-07-01T19:10', '2026-07-02T19:09'],
+    };
+    const daily = parseDailyWeather(raw);
+    expect(daily[0].uvIndexMax).toBeNull();
+    expect(daily[0].precipProbabilityMax).toBeNull();
+    expect(daily[1].uvIndexMax).toBe(3);
+    expect(daily[1].precipProbabilityMax).toBe(65);
+  });
+
+  it('handles arrays shorter than time without throwing', () => {
+    const raw = {
+      time: ['2026-07-01', '2026-07-02'],
+      weather_code: [0],
+      temperature_2m_max: [28],
+      temperature_2m_min: [20],
+      apparent_temperature_max: [31],
+      apparent_temperature_min: [22],
+      precipitation_sum: [0],
+      precipitation_probability_max: [],
+      wind_speed_10m_max: [15],
+      uv_index_max: [],
+      sunrise: ['2026-07-01T04:45'],
+      sunset: ['2026-07-01T19:10'],
+    };
+    const daily = parseDailyWeather(raw);
+    expect(daily).toHaveLength(2);
+    expect(daily[1].uvIndexMax).toBeNull();
+    expect(daily[1].precipProbabilityMax).toBeNull();
+  });
 });

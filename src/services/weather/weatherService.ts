@@ -84,7 +84,7 @@ export async function fetchTripWeather(
     );
   }
 
-  const key = weatherCacheKey(coordinate.latitude, coordinate.longitude, clampedStart, clampedEnd);
+  const key = weatherCacheKey(coordinate.latitude, coordinate.longitude, today);
 
   const cached = getCachedWeather(key);
   if (cached) return cached;
