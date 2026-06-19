@@ -112,11 +112,14 @@ export const candidatePlaceRepository = {
       const existing = await db.candidatePlaces.get(id);
       if (!existing) return;
       await db.candidatePlaces.delete(id);
+      const now = nowIso();
       const remaining = await db.candidatePlaces
         .where('tripId')
         .equals(existing.tripId)
         .sortBy('order');
-      await db.candidatePlaces.bulkPut(remaining.map((c, i) => ({ ...c, order: i })));
+      await db.candidatePlaces.bulkPut(
+        remaining.map((c, i) => ({ ...c, order: i, updatedAt: now })),
+      );
       await touchTrip(existing.tripId);
     });
   },
@@ -171,7 +174,9 @@ export const candidatePlaceRepository = {
         .where('tripId')
         .equals(candidate.tripId)
         .sortBy('order');
-      await db.candidatePlaces.bulkPut(remaining.map((c, i) => ({ ...c, order: i })));
+      await db.candidatePlaces.bulkPut(
+        remaining.map((c, i) => ({ ...c, order: i, updatedAt: now })),
+      );
       await touchTrip(candidate.tripId);
     });
   },
@@ -190,10 +195,11 @@ export const candidatePlaceRepository = {
         }),
         ...currentOrder.filter((id) => !seen.has(id)),
       ];
+      const now = nowIso();
       const updates: CandidatePlaceRecord[] = [];
       nextOrder.forEach((id, index) => {
         const c = byId.get(id);
-        if (c && c.order !== index) updates.push({ ...c, order: index });
+        if (c && c.order !== index) updates.push({ ...c, order: index, updatedAt: now });
       });
       if (updates.length > 0) {
         await db.candidatePlaces.bulkPut(updates);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/db/database';
-import { parseBackup } from '@/domain/backup';
+import { parseBackup, type TripBackup } from '@/domain/backup';
 import { candidatePlaceRepository } from './candidatePlaceRepository';
 import { reservationRepository } from './reservationRepository';
 import { placeRepository } from './placeRepository';
@@ -137,6 +137,34 @@ describe('Phase 2.4 backup roundtrip', () => {
     };
     expect(() => parseBackup(JSON.stringify(corrupted))).toThrow(/スポットが見つかりません/);
   });
+
+  it('importBackup throws when reservation.dayId is not in dayIdMap (bypassing parseBackup)', async () => {
+    const { trip } = await seedFull();
+    const backup = await tripRepository.exportTrip(trip.id);
+    const badBackup: TripBackup = {
+      ...backup,
+      reservations: [{ ...backup.reservations[0], dayId: 'ghost-day-id' }],
+    };
+    const tripsBefore = await db.trips.count();
+    await expect(tripRepository.importBackup(badBackup)).rejects.toThrow(
+      /日付データが見つかりません/,
+    );
+    expect(await db.trips.count()).toBe(tripsBefore);
+  });
+
+  it('importBackup throws when reservation.placeId is not in placeIdMap (bypassing parseBackup)', async () => {
+    const { trip } = await seedFull();
+    const backup = await tripRepository.exportTrip(trip.id);
+    const badBackup: TripBackup = {
+      ...backup,
+      reservations: [{ ...backup.reservations[0], placeId: 'ghost-place-id' }],
+    };
+    const tripsBefore = await db.trips.count();
+    await expect(tripRepository.importBackup(badBackup)).rejects.toThrow(
+      /スポットが見つかりません/,
+    );
+    expect(await db.trips.count()).toBe(tripsBefore);
+  });
 });
 
 describe('Trip duplication (Phase 2.4)', () => {
@@ -166,18 +194,46 @@ describe('Trip duplication (Phase 2.4)', () => {
     expect(dupCandidates[0].visitStatus).toBe('planned');
   });
 
-  it('does NOT copy reservations (booking info is personal)', async () => {
+  it('copies reservations with remapped tripId, dayId, and placeId', async () => {
     const trip = await tripRepository.create({
       title: '予約複製テスト',
       description: '',
       startDate: '2026-08-01',
       endDate: '2026-08-01',
     });
-    await reservationRepository.add({ tripId: trip.id, kind: 'lodging', title: 'Hotel A' });
+    const days = await tripRepository.listDays(trip.id);
+    const place = await placeRepository.add({
+      tripId: trip.id,
+      dayId: days[0].id,
+      latitude: 35,
+      longitude: 135,
+      name: '観光地',
+    });
+    const res = await reservationRepository.add({
+      tripId: trip.id,
+      dayId: days[0].id,
+      placeId: place.id,
+      kind: 'lodging',
+      title: 'Hotel A',
+      confirmationCode: 'CONF-001',
+      isPrivate: true,
+    });
 
     const dup = await tripRepository.duplicate(trip.id);
     const dupReservations = await reservationRepository.listByTrip(dup.id);
-    expect(dupReservations).toHaveLength(0);
+    expect(dupReservations).toHaveLength(1);
+    const r = dupReservations[0];
+    expect(r.id).not.toBe(res.id);
+    expect(r.tripId).toBe(dup.id);
+    expect(r.title).toBe('Hotel A');
+    expect(r.confirmationCode).toBe('CONF-001');
+    expect(r.isPrivate).toBe(true);
+    const dupDays = await tripRepository.listDays(dup.id);
+    expect(r.dayId).toBe(dupDays[0].id);
+    expect(r.dayId).not.toBe(days[0].id);
+    const dupPlaces = await placeRepository.listByTrip(dup.id);
+    expect(r.placeId).toBe(dupPlaces[0].id);
+    expect(r.placeId).not.toBe(place.id);
   });
 
   it('copies checklist items with completed reset to false', async () => {
@@ -202,6 +258,51 @@ describe('Trip duplication (Phase 2.4)', () => {
     expect(dupItems).toHaveLength(1);
     expect(dupItems[0].completed).toBe(false); // reset
     expect(dupItems[0].id).not.toBe(item.id);
+  });
+
+  it('copies participants with new IDs', async () => {
+    const { participantRepository } = await import('./participantRepository');
+    const trip = await tripRepository.create({
+      title: '参加者複製テスト',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const alice = await participantRepository.add({ tripId: trip.id, name: 'Alice' });
+    await participantRepository.add({ tripId: trip.id, name: 'Bob' });
+
+    const dup = await tripRepository.duplicate(trip.id);
+    const dupParticipants = await participantRepository.listByTrip(dup.id);
+    expect(dupParticipants).toHaveLength(2);
+    expect(dupParticipants.map((p) => p.name)).toContain('Alice');
+    expect(dupParticipants.every((p) => p.tripId === dup.id)).toBe(true);
+    expect(dupParticipants.every((p) => p.id !== alice.id)).toBe(true);
+  });
+
+  it('remaps checklist assigneeId to new participant ID', async () => {
+    const { participantRepository } = await import('./participantRepository');
+    const { checklistItemRepository } = await import('./checklistItemRepository');
+    const trip = await tripRepository.create({
+      title: 'チェックリスト担当者複製テスト',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const p = await participantRepository.add({ tripId: trip.id, name: '担当者' });
+    await checklistItemRepository.add({
+      tripId: trip.id,
+      kind: 'todo',
+      title: 'タスク',
+      category: '準備',
+      assigneeId: p.id,
+    });
+
+    const dup = await tripRepository.duplicate(trip.id);
+    const dupItems = await checklistItemRepository.listByTrip(dup.id);
+    expect(dupItems).toHaveLength(1);
+    const dupParticipants = await participantRepository.listByTrip(dup.id);
+    expect(dupItems[0].assigneeId).toBe(dupParticipants[0].id);
+    expect(dupItems[0].assigneeId).not.toBe(p.id);
   });
 
   it('does NOT copy expenses', async () => {

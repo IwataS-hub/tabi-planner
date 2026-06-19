@@ -75,7 +75,23 @@ export const reservationRepository = {
 
   async add(input: NewReservationInput): Promise<Reservation> {
     let record: ReservationRecord | undefined;
-    await db.transaction('rw', db.trips, db.reservations, async () => {
+    await db.transaction('rw', db.trips, db.days, db.places, db.reservations, async () => {
+      const trip = await db.trips.get(input.tripId);
+      if (!trip) throw new Error(`旅行が見つかりません: ${input.tripId}`);
+      if (input.dayId) {
+        const day = await db.days.get(input.dayId);
+        if (!day) throw new Error(`日付データが見つかりません: ${input.dayId}`);
+        if (day.tripId !== input.tripId) throw new Error('日付データが別の旅行に属しています');
+      }
+      if (input.placeId) {
+        const place = await db.places.get(input.placeId);
+        if (!place) throw new Error(`スポットが見つかりません: ${input.placeId}`);
+        if (place.tripId !== input.tripId) throw new Error('スポットが別の旅行に属しています');
+        if (input.dayId && place.dayId !== input.dayId)
+          throw new Error('スポットと日付データが対応していません');
+      }
+      if (input.startAt && input.endAt && input.endAt < input.startAt)
+        throw new Error('終了時刻は開始時刻以降にしてください');
       const now = nowIso();
       record = validateRecord(
         reservationRecordSchema,
@@ -108,14 +124,25 @@ export const reservationRepository = {
 
   async update(id: string, patch: ReservationPatch): Promise<Reservation> {
     let record: ReservationRecord | undefined;
-    await db.transaction('rw', db.trips, db.reservations, async () => {
+    await db.transaction('rw', db.trips, db.days, db.places, db.reservations, async () => {
       const existing = await db.reservations.get(id);
       if (!existing) throw new Error(`予約が見つかりません: ${id}`);
-      record = validateRecord(
-        reservationRecordSchema,
-        { ...existing, ...patch, updatedAt: nowIso() },
-        '予約の更新',
-      );
+      const merged = { ...existing, ...patch, updatedAt: nowIso() };
+      if (merged.dayId) {
+        const day = await db.days.get(merged.dayId);
+        if (!day) throw new Error(`日付データが見つかりません: ${merged.dayId}`);
+        if (day.tripId !== merged.tripId) throw new Error('日付データが別の旅行に属しています');
+      }
+      if (merged.placeId) {
+        const place = await db.places.get(merged.placeId);
+        if (!place) throw new Error(`スポットが見つかりません: ${merged.placeId}`);
+        if (place.tripId !== merged.tripId) throw new Error('スポットが別の旅行に属しています');
+        if (merged.dayId && place.dayId !== merged.dayId)
+          throw new Error('スポットと日付データが対応していません');
+      }
+      if (merged.startAt && merged.endAt && merged.endAt < merged.startAt)
+        throw new Error('終了時刻は開始時刻以降にしてください');
+      record = validateRecord(reservationRecordSchema, merged, '予約の更新');
       await db.reservations.put(record);
       await touchTrip(record.tripId);
     });

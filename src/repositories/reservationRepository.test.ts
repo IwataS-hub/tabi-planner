@@ -132,3 +132,155 @@ describe('reservationRepository', () => {
     expect(r.placeId).toBe(place.id);
   });
 });
+
+describe('reservationRepository referential integrity', () => {
+  beforeEach(async () => {
+    await Promise.all([
+      db.trips.clear(),
+      db.days.clear(),
+      db.places.clear(),
+      db.reservations.clear(),
+    ]);
+  });
+
+  it('rejects add with non-existent tripId', async () => {
+    await expect(
+      reservationRepository.add({ tripId: 'ghost-trip', kind: 'lodging', title: 'Hotel' }),
+    ).rejects.toThrow(/旅行が見つかりません/);
+    expect(await db.reservations.count()).toBe(0);
+  });
+
+  it('rejects add when dayId belongs to a different trip', async () => {
+    const trip1 = await tripRepository.create({
+      title: '旅行1',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const trip2 = await tripRepository.create({
+      title: '旅行2',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const days2 = await tripRepository.listDays(trip2.id);
+    await expect(
+      reservationRepository.add({
+        tripId: trip1.id,
+        dayId: days2[0].id,
+        kind: 'lodging',
+        title: 'Hotel',
+      }),
+    ).rejects.toThrow(/別の旅行/);
+    expect(await db.reservations.count()).toBe(0);
+  });
+
+  it('rejects add when placeId belongs to a different trip', async () => {
+    const trip1 = await tripRepository.create({
+      title: '旅行1',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const trip2 = await tripRepository.create({
+      title: '旅行2',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const days2 = await tripRepository.listDays(trip2.id);
+    const place2 = await placeRepository.add({
+      tripId: trip2.id,
+      dayId: days2[0].id,
+      latitude: 35,
+      longitude: 135,
+    });
+    await expect(
+      reservationRepository.add({
+        tripId: trip1.id,
+        placeId: place2.id,
+        kind: 'lodging',
+        title: 'Hotel',
+      }),
+    ).rejects.toThrow(/別の旅行/);
+  });
+
+  it('rejects add when placeId.dayId does not match dayId', async () => {
+    const trip = await tripRepository.create({
+      title: '旅行',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-02',
+    });
+    const days = await tripRepository.listDays(trip.id);
+    const place = await placeRepository.add({
+      tripId: trip.id,
+      dayId: days[0].id,
+      latitude: 35,
+      longitude: 135,
+    });
+    await expect(
+      reservationRepository.add({
+        tripId: trip.id,
+        dayId: days[1].id,
+        placeId: place.id,
+        kind: 'activity',
+        title: 'アクティビティ',
+      }),
+    ).rejects.toThrow(/対応していません/);
+  });
+
+  it('rejects add when endAt < startAt', async () => {
+    const trip = await tripRepository.create({
+      title: '旅行',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    await expect(
+      reservationRepository.add({
+        tripId: trip.id,
+        kind: 'transport',
+        title: '電車',
+        startAt: '2026-08-01T12:00:00.000Z',
+        endAt: '2026-08-01T10:00:00.000Z',
+      }),
+    ).rejects.toThrow(/開始時刻/);
+  });
+
+  it('rejects update when dayId belongs to a different trip', async () => {
+    const trip1 = await tripRepository.create({
+      title: '旅行1',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const trip2 = await tripRepository.create({
+      title: '旅行2',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const days2 = await tripRepository.listDays(trip2.id);
+    const r = await reservationRepository.add({ tripId: trip1.id, kind: 'other', title: '予約' });
+    await expect(reservationRepository.update(r.id, { dayId: days2[0].id })).rejects.toThrow(
+      /別の旅行/,
+    );
+  });
+
+  it('rejects update when endAt < startAt', async () => {
+    const trip = await tripRepository.create({
+      title: '旅行',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const r = await reservationRepository.add({ tripId: trip.id, kind: 'other', title: '予約' });
+    await expect(
+      reservationRepository.update(r.id, {
+        startAt: '2026-08-01T12:00:00.000Z',
+        endAt: '2026-08-01T10:00:00.000Z',
+      }),
+    ).rejects.toThrow(/開始時刻/);
+  });
+});

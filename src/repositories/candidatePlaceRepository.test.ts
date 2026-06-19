@@ -140,6 +140,84 @@ describe('candidatePlaceRepository', () => {
     expect(list.map((x) => x.id)).toEqual([c.id, a.id, b.id]);
   });
 
+  it('reorder updates updatedAt on changed records', async () => {
+    const { tripId } = await seed();
+    const a = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 35,
+      longitude: 135,
+      name: 'A',
+    });
+    const b = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 36,
+      longitude: 135,
+      name: 'B',
+    });
+    const before = (await db.candidatePlaces.get(a.id))!.updatedAt;
+    await candidatePlaceRepository.reorder(tripId, [b.id, a.id]);
+    const afterA = (await db.candidatePlaces.get(a.id))!;
+    const afterB = (await db.candidatePlaces.get(b.id))!;
+    expect(afterA.order).toBe(1);
+    expect(afterB.order).toBe(0);
+    expect(afterA.updatedAt >= before).toBe(true);
+    expect(afterB.updatedAt >= before).toBe(true);
+  });
+
+  it('remove repacks remaining candidates and updates their updatedAt', async () => {
+    const { tripId } = await seed();
+    const a = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 35,
+      longitude: 135,
+      name: 'A',
+    });
+    const b = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 36,
+      longitude: 135,
+      name: 'B',
+    });
+    const c = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 37,
+      longitude: 135,
+      name: 'C',
+    });
+    const beforeC = (await db.candidatePlaces.get(c.id))!.updatedAt;
+    await candidatePlaceRepository.remove(b.id);
+    const remaining = await candidatePlaceRepository.listByTrip(tripId);
+    expect(remaining.map((x) => x.id)).toEqual([a.id, c.id]);
+    expect(remaining[0].order).toBe(0);
+    expect(remaining[1].order).toBe(1);
+    const afterC = (await db.candidatePlaces.get(c.id))!;
+    expect(afterC.updatedAt >= beforeC).toBe(true);
+  });
+
+  it('promoteToDay repacks remaining candidates and updates their updatedAt', async () => {
+    const { tripId, dayId } = await seed();
+    const a = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 35,
+      longitude: 135,
+      name: 'A',
+    });
+    const b = await candidatePlaceRepository.add({
+      tripId,
+      latitude: 36,
+      longitude: 135,
+      name: 'B',
+    });
+    const beforeB = (await db.candidatePlaces.get(b.id))!.updatedAt;
+    await candidatePlaceRepository.promoteToDay(a.id, dayId);
+    const remaining = await candidatePlaceRepository.listByTrip(tripId);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(b.id);
+    expect(remaining[0].order).toBe(0);
+    const afterB = (await db.candidatePlaces.get(b.id))!;
+    expect(afterB.updatedAt >= beforeB).toBe(true);
+  });
+
   it('throws when promoting to a day in different trip', async () => {
     const { tripId } = await seed();
     const trip2 = await tripRepository.create({
