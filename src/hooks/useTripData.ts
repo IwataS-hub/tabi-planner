@@ -3,11 +3,15 @@ import { tripRepository, type TripListItem } from '@/repositories/tripRepository
 import { participantRepository } from '@/repositories/participantRepository';
 import { expenseRepository, type ExpenseWithShares } from '@/repositories/expenseRepository';
 import { checklistItemRepository } from '@/repositories/checklistItemRepository';
+import { candidatePlaceRepository } from '@/repositories/candidatePlaceRepository';
+import { reservationRepository } from '@/repositories/reservationRepository';
 import type {
+  CandidatePlace,
   ChecklistItem,
   ChecklistKind,
   Participant,
   Place,
+  Reservation,
   Trip,
   TripDay,
 } from '@/domain/types';
@@ -66,5 +70,21 @@ export function useTripChecklist(
   return useLiveQueryResult(
     () => (tripId ? checklistItemRepository.listByTrip(tripId, kind) : Promise.resolve([])),
     [tripId, kind],
+  );
+}
+
+/** Reactive candidate (unscheduled) places for a trip. */
+export function useTripCandidates(tripId: string | undefined): LiveResult<CandidatePlace[]> {
+  return useLiveQueryResult(
+    () => (tripId ? candidatePlaceRepository.listByTrip(tripId) : Promise.resolve([])),
+    [tripId],
+  );
+}
+
+/** Reactive reservations for a trip. */
+export function useTripReservations(tripId: string | undefined): LiveResult<Reservation[]> {
+  return useLiveQueryResult(
+    () => (tripId ? reservationRepository.listByTrip(tripId) : Promise.resolve([])),
+    [tripId],
   );
 }

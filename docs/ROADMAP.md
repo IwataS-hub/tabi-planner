@@ -47,19 +47,34 @@ Target branch: `feat/phase-2-3-trip-toolkit`
 - Planned / visited / skipped
 - Card, map, summary, and print integration
 
-## Sprint B — Smart itinerary
+## Sprint B — Smart itinerary ✅ SHIPPED
 
-Target branch: `feat/phase-2-4-smart-itinerary`
+Branch: `feat/phase-2-4-smart-itinerary`
 
-- Unscheduled place inbox
-- Move places between days
-- Duplicate-place warnings
-- Reservations for lodging, transit, restaurants, and events
-- `.ics` calendar export
-- Automatic arrival / departure timeline from start, stay, and travel times
-- Conflict and lateness warnings
-- Overpacked-day, long-travel, rain, sunset, and missing-lodging warnings
-- Trip templates and safe trip duplication
+- ✅ Unscheduled place inbox (candidate places)
+- ✅ Move places between days (cross-day move via dialog)
+- ✅ Move scheduled places back to candidate pool
+- ✅ Reservations for lodging, transit, restaurants, events, activities
+  - Private reservation badge
+  - Day and place linkage
+  - Backup / import roundtrip (with ID remapping)
+- ✅ `.ics` calendar export (Asia/Tokyo, places + reservations, no confirmationCode)
+- ✅ Automatic arrival / departure timeline from start, stay, and travel times
+  - Pure function `domain/timeline.ts`
+  - Estimated times displayed in place list items
+- ✅ Smart warnings (`domain/itineraryWarnings.ts`)
+  - warning / caution / info severity levels
+  - Missing travel time, overpacked day, long travel, time conflicts
+  - Reservation vs. place time conflicts
+  - No lodging reservation on non-last days
+  - Rainy-day outdoor places (when weather available)
+  - Outdoor places after sunset (when weather available)
+  - Unscheduled candidates, budget overrun
+- ✅ Safe trip duplication (candidates, checklists copied; expenses, reservations excluded)
+- ✅ Trip templates on creation form (日帰り / 1泊2日 / ライブ遠征 / グルメ旅行)
+- ✅ Candidate places in print layout
+- ✅ Reservations in print layout (per-day and unassigned)
+- ✅ Backup version 1 maintained; candidatePlaces and reservations added as optional arrays
 
 ## Sprint C — Travel mode and sharing
 

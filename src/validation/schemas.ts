@@ -4,6 +4,7 @@ import {
   CHECKLIST_KINDS,
   PLACE_ADDRESS_MAX_LENGTH,
   PLACE_CATEGORIES,
+  RESERVATION_KINDS,
   VISIT_STATUSES,
 } from '@/domain/types';
 import { TRAVEL_MODES } from '@/domain/routing';
@@ -90,6 +91,7 @@ export const placeCategorySchema = z.enum(PLACE_CATEGORIES);
 export const visitStatusSchema = z.enum(VISIT_STATUSES);
 export const expenseCategorySchema = z.enum(EXPENSE_CATEGORIES);
 export const checklistKindSchema = z.enum(CHECKLIST_KINDS);
+export const reservationKindSchema = z.enum(RESERVATION_KINDS);
 
 // ---------------------------------------------------------------------------
 // Persistence record schemas
@@ -280,6 +282,59 @@ export const checklistItemRecordSchema = z.object({
   dueAt: nullableIsoDate,
   category: z.string().max(60, 'カテゴリは60文字以内で入力してください'),
   order: nonNegativeInt,
+  createdAt: isoTimestamp,
+  updatedAt: isoTimestamp,
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2.4 record schemas
+// ---------------------------------------------------------------------------
+
+export const candidatePlaceRecordSchema = z.object({
+  id: z.string().min(1),
+  tripId: z.string().min(1),
+  name: z.string().min(1, '名称を入力してください').max(120, '名称は120文字以内で入力してください'),
+  category: placeCategorySchema,
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  address: optionalAddress,
+  startTime: timeOfDay,
+  stayMinutes: nonNegativeInt.max(1440, '滞在時間が長すぎます').nullable(),
+  memo: z.string().max(2000, 'メモは2000文字以内で入力してください'),
+  url: optionalUrl,
+  estimatedCost: nonNegativeInt.max(100_000_000, '金額が大きすぎます').nullable(),
+  visitStatus: visitStatusSchema.nullish().transform((v) => v ?? ('planned' as const)),
+  order: nonNegativeInt,
+  createdAt: isoTimestamp,
+  updatedAt: isoTimestamp,
+});
+
+export const reservationRecordSchema = z.object({
+  id: z.string().min(1),
+  tripId: z.string().min(1),
+  dayId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
+  placeId: z
+    .string()
+    .min(1)
+    .nullish()
+    .transform((v) => v ?? null),
+  kind: reservationKindSchema,
+  title: z
+    .string()
+    .min(1, '予約名を入力してください')
+    .max(120, '予約名は120文字以内で入力してください'),
+  startAt: nullableIsoTimestamp,
+  endAt: nullableIsoTimestamp,
+  location: z.string().max(200, '場所は200文字以内で入力してください'),
+  confirmationCode: z.string().max(100, '予約番号は100文字以内で入力してください'),
+  url: optionalUrl,
+  phone: z.string().max(30, '電話番号は30文字以内で入力してください'),
+  memo: z.string().max(2000, 'メモは2000文字以内で入力してください'),
+  isPrivate: z.boolean(),
   createdAt: isoTimestamp,
   updatedAt: isoTimestamp,
 });

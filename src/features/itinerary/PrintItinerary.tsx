@@ -7,18 +7,43 @@ import {
   computeBalances,
   summarizeByCategory,
 } from '@/domain/settlement';
+import type { TimelineEntry } from '@/domain/timeline';
 import type {
+  CandidatePlace,
   ChecklistItem,
   Expense,
   ExpenseShare,
   Participant,
   Place,
+  Reservation,
+  ReservationKind,
   Trip,
   TripDay,
   VisitStatus,
 } from '@/domain/types';
 import { dayCount, formatDuration, formatJaDate, formatJaDateRange, formatYen } from '@/lib/date';
 import { APP } from '@/config/app';
+
+const RESERVATION_KIND_LABELS: Record<ReservationKind, string> = {
+  lodging: '宿泊',
+  transport: '交通',
+  restaurant: 'レストラン',
+  event: 'イベント',
+  activity: 'アクティビティ',
+  other: 'その他',
+};
+
+function formatReservationTime(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
   planned: '予定',
@@ -57,8 +82,9 @@ interface PrintItineraryProps {
   expenses?: Expense[];
   expenseShares?: ExpenseShare[];
   checklistItems?: ChecklistItem[];
-  /** In-memory weather is only printed if already fetched; printing never triggers a fetch. */
-  weatherSummary?: string;
+  candidatePlaces?: CandidatePlace[];
+  reservations?: Reservation[];
+  timelineByDay?: Record<string, TimelineEntry[]>;
 }
 
 export function PrintItinerary({
@@ -69,6 +95,9 @@ export function PrintItinerary({
   expenses = [],
   expenseShares = [],
   checklistItems = [],
+  candidatePlaces = [],
+  reservations = [],
+  timelineByDay = {},
 }: PrintItineraryProps) {
   const placesByDay = new Map<string, Place[]>();
   for (const place of places) {
@@ -108,6 +137,9 @@ export function PrintItinerary({
         const summary = summarizeDay(dayPlaces);
         const visitedCount = dayPlaces.filter((p) => p.visitStatus === 'visited').length;
         const skippedCount = dayPlaces.filter((p) => p.visitStatus === 'skipped').length;
+        const dayTimeline = timelineByDay[day.id] ?? [];
+        const timeByPlaceId = new Map(dayTimeline.map((e) => [e.placeId, e]));
+        const dayReservations = reservations.filter((r) => r.dayId === day.id);
         return (
           <section key={day.id} className="mb-5 break-inside-avoid">
             <div className="flex items-baseline justify-between border-b border-neutral-400 pb-1">
@@ -133,6 +165,8 @@ export function PrintItinerary({
                 {dayPlaces.map((place, placeIndex) => {
                   const meta = getCategoryMeta(place.category);
                   const isLast = placeIndex === dayPlaces.length - 1;
+                  const tl = timeByPlaceId.get(place.id);
+                  const displayTime = tl?.arrivalTime ?? place.startTime;
                   return (
                     <li
                       key={place.id}
@@ -141,7 +175,8 @@ export function PrintItinerary({
                       <div className="flex items-baseline gap-2">
                         <span className="font-bold tabular-nums">{placeIndex + 1}.</span>
                         <span className="text-neutral-700 tabular-nums">
-                          {place.startTime ?? '--:--'}
+                          {displayTime ?? '--:--'}
+                          {tl?.isEstimated && displayTime ? '（推定）' : ''}
                         </span>
                         <span className="flex-1 font-semibold">{place.name}</span>
                         <span className="rounded border border-neutral-400 px-1.5 py-0.5 text-[10px]">
@@ -166,6 +201,23 @@ export function PrintItinerary({
                   );
                 })}
               </ol>
+            )}
+
+            {/* Day reservations */}
+            {dayReservations.length > 0 && (
+              <div className="mt-2">
+                <p className="text-[11px] font-semibold text-neutral-700">この日の予約:</p>
+                <ul className="mt-1 space-y-0.5">
+                  {dayReservations.map((res) => (
+                    <li key={res.id} className="text-[11px] text-neutral-700">
+                      [{RESERVATION_KIND_LABELS[res.kind]}] {res.title}
+                      {res.startAt ? ` ${formatReservationTime(res.startAt)}` : ''}
+                      {res.location ? ` @ ${res.location}` : ''}
+                      {res.isPrivate ? ' [P]' : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
         );
@@ -202,6 +254,43 @@ export function PrintItinerary({
             {settlement.map((transfer, i) => (
               <li key={i}>
                 {transfer.fromName} → {transfer.toName}: {formatYen(transfer.amountYen)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Unassigned reservations */}
+      {reservations.filter((r) => r.dayId === null).length > 0 && (
+        <section className="mb-5 break-inside-avoid">
+          <h2 className="mb-2 border-b border-neutral-400 pb-1 text-base font-bold">未割当予約</h2>
+          <ul className="space-y-0.5 text-sm">
+            {reservations
+              .filter((r) => r.dayId === null)
+              .map((res) => (
+                <li key={res.id} className="text-sm">
+                  [{RESERVATION_KIND_LABELS[res.kind]}] {res.title}
+                  {res.startAt ? ` ${formatReservationTime(res.startAt)}` : ''}
+                  {res.location ? ` @ ${res.location}` : ''}
+                  {res.isPrivate ? ' [P]' : ''}
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Candidate places */}
+      {candidatePlaces.length > 0 && (
+        <section className="mb-5 break-inside-avoid">
+          <h2 className="mb-2 border-b border-neutral-400 pb-1 text-base font-bold">
+            候補スポット
+          </h2>
+          <ul className="space-y-0.5 text-sm">
+            {candidatePlaces.map((c) => (
+              <li key={c.id}>
+                {c.name}
+                {c.address ? ` (${c.address})` : ''}
+                {c.memo ? ` — ${c.memo}` : ''}
               </li>
             ))}
           </ul>

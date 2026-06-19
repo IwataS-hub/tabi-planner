@@ -3,11 +3,12 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Check, X, Calendar } from 'lucide-react';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { getCategoryMeta } from '@/domain/categories';
-import type { Place, VisitStatus } from '@/domain/types';
+import type { Place, TripDay, VisitStatus } from '@/domain/types';
 import { formatDuration, formatYen } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import type { PlacePatch } from '@/repositories/placeRepository';
 import { PlaceEditor } from './PlaceEditor';
+import type { TimelineEntry } from '@/domain/timeline';
 
 const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
   planned: '予定',
@@ -55,6 +56,11 @@ interface PlaceListItemProps {
   onDelete: (id: string) => void;
   onFocusOnMap: (id: string) => void;
   onVisitStatusChange?: (id: string, status: VisitStatus) => void;
+  days?: TripDay[];
+  onMoveToDay?: (id: string, targetDayId: string) => void;
+  onMoveToCandidate?: (id: string) => void;
+  /** Timeline entry for this place (derived, not persisted). */
+  timelineEntry?: TimelineEntry | null;
 }
 
 function summary(place: Place): string {
@@ -75,6 +81,10 @@ export function PlaceListItem({
   onDelete,
   onFocusOnMap,
   onVisitStatusChange,
+  days,
+  onMoveToDay,
+  onMoveToCandidate,
+  timelineEntry,
 }: PlaceListItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: place.id,
@@ -132,6 +142,15 @@ export function PlaceListItem({
             <span className="text-ink-soft block truncate text-xs">
               {meta.label}
               {meta_line ? `・${meta_line}` : ''}
+              {timelineEntry?.arrivalTime && (
+                <>
+                  {' '}
+                  <span className={timelineEntry.isEstimated ? 'text-ink-faint italic' : ''}>
+                    着{timelineEntry.arrivalTime}
+                    {timelineEntry.isEstimated ? '（推定）' : ''}
+                  </span>
+                </>
+              )}
             </span>
           </span>
         </button>
@@ -152,6 +171,9 @@ export function PlaceListItem({
             onDuplicate={() => onDuplicate(place.id)}
             onDelete={() => onDelete(place.id)}
             onFocusOnMap={() => onFocusOnMap(place.id)}
+            days={days}
+            onMoveToDay={onMoveToDay}
+            onMoveToCandidate={onMoveToCandidate}
           />
         </div>
       ) : null}

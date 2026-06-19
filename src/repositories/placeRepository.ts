@@ -1,12 +1,16 @@
 import { db } from '@/db/database';
-import { dayFromRecord, placeFromRecord } from '@/db/mappers';
-import type { PlaceRecord } from '@/db/records';
+import { candidatePlaceFromRecord, dayFromRecord, placeFromRecord } from '@/db/mappers';
+import type { CandidatePlaceRecord, PlaceRecord } from '@/db/records';
 import { DEFAULT_CATEGORY } from '@/domain/categories';
 import type { ReverseGeocodeResult } from '@/domain/geocoding';
 import { isTravelMode, routeKey, type TravelMode } from '@/domain/routing';
-import type { Place, PlaceCategory } from '@/domain/types';
+import type { CandidatePlace, Place, PlaceCategory } from '@/domain/types';
 import { createId } from '@/lib/utils';
-import { placeRecordSchema, tripDayRecordSchema } from '@/validation/schemas';
+import {
+  candidatePlaceRecordSchema,
+  placeRecordSchema,
+  tripDayRecordSchema,
+} from '@/validation/schemas';
 import { nowIso, validateRecord } from './shared';
 
 export const DEFAULT_PLACE_NAME = '名称未設定';
@@ -421,4 +425,69 @@ export const placeRepository = {
 
 function toPlaceRecord(record: PlaceRecord): PlaceRecord {
   return validateRecord(placeRecordSchema, record, 'スポットデータ');
+}
+
+/** Move a place to a different day, normalising order in both source and destination days. */
+export async function movePlaceToDay(placeId: string, targetDayId: string): Promise<void> {
+  await db.transaction('rw', db.trips, db.days, db.places, async () => {
+    const place = await db.places.get(placeId);
+    if (!place) throw new Error(`スポットが見つかりません: ${placeId}`);
+    if (place.dayId === targetDayId) return;
+    const targetDay = await db.days.get(targetDayId);
+    if (!targetDay) throw new Error(`日付データが見つかりません: ${targetDayId}`);
+    if (targetDay.tripId !== place.tripId) {
+      throw new Error('移動先の日付データが別の旅行に属しています');
+    }
+    const sourceDayId = place.dayId;
+    const targetOrder = await db.places.where('dayId').equals(targetDayId).count();
+    await db.places.put({ ...place, dayId: targetDayId, order: targetOrder, updatedAt: nowIso() });
+    // Repack source day
+    const sourceRemaining = await db.places.where('dayId').equals(sourceDayId).sortBy('order');
+    await db.places.bulkPut(sourceRemaining.map((p, i) => ({ ...p, order: i })));
+    await reconcileAutoTravelInDay(sourceDayId);
+    await reconcileAutoTravelInDay(targetDayId);
+    await db.trips.update(place.tripId, { updatedAt: nowIso() });
+  });
+}
+
+/** Demote a scheduled place back to the candidate pool. */
+export async function movePlaceToCandidate(placeId: string): Promise<CandidatePlace> {
+  let created: CandidatePlaceRecord | undefined;
+  await db.transaction('rw', db.trips, db.days, db.places, db.candidatePlaces, async () => {
+    const place = await db.places.get(placeId);
+    if (!place) throw new Error(`スポットが見つかりません: ${placeId}`);
+    const now = nowIso();
+    const candidateOrder = await db.candidatePlaces.where('tripId').equals(place.tripId).count();
+    created = validateRecord(
+      candidatePlaceRecordSchema,
+      {
+        id: createId(),
+        tripId: place.tripId,
+        name: place.name,
+        category: place.category,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        address: place.address,
+        startTime: place.startTime,
+        stayMinutes: place.stayMinutes,
+        memo: place.memo,
+        url: place.url,
+        estimatedCost: place.estimatedCost,
+        visitStatus: place.visitStatus ?? 'planned',
+        order: candidateOrder,
+        createdAt: now,
+        updatedAt: now,
+      },
+      '候補へ移動',
+    );
+    await db.candidatePlaces.add(created);
+    const dayId = place.dayId;
+    await db.places.delete(placeId);
+    const remaining = await db.places.where('dayId').equals(dayId).sortBy('order');
+    await db.places.bulkPut(remaining.map((p, i) => ({ ...p, order: i })));
+    await reconcileAutoTravelInDay(dayId);
+    await db.trips.update(place.tripId, { updatedAt: nowIso() });
+  });
+  if (!created) throw new Error('候補への移動に失敗しました');
+  return candidatePlaceFromRecord(created);
 }

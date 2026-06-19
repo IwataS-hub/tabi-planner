@@ -15,9 +15,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import type { RouteEstimate, TravelMode } from '@/domain/routing';
-import type { Place, VisitStatus } from '@/domain/types';
+import type { Place, TripDay, VisitStatus } from '@/domain/types';
 import type { PlacePatch } from '@/repositories/placeRepository';
 import type { RoutingProvider } from '@/services/routing/RoutingProvider';
+import type { TimelineEntry } from '@/domain/timeline';
 import { EmptyDay } from './EmptyDay';
 import { PlaceListItem } from './PlaceListItem';
 import { TravelLegRow } from './TravelLegRow';
@@ -47,6 +48,11 @@ interface PlaceListProps {
   /** Called when public transit is selected for a leg (persists choice, clears geometry). */
   onTransitSelected?: (fromPlaceId: string) => void;
   onVisitStatusChange?: (id: string, status: VisitStatus) => void;
+  days?: TripDay[];
+  onMoveToDay?: (id: string, targetDayId: string) => void;
+  onMoveToCandidate?: (id: string) => void;
+  /** Timeline entries indexed by placeId. */
+  timelineEntries?: Map<string, TimelineEntry>;
 }
 
 export function PlaceList({
@@ -65,6 +71,10 @@ export function PlaceList({
   onLegCalculationStart,
   onTransitSelected,
   onVisitStatusChange,
+  days,
+  onMoveToDay,
+  onMoveToCandidate,
+  timelineEntries,
 }: PlaceListProps) {
   // A drag-time order override (set only in the drag handler, never in an
   // effect). The render order is derived by reconciling this override with the
@@ -123,6 +133,10 @@ export function PlaceList({
                   onDelete={onDelete}
                   onFocusOnMap={onFocusOnMap}
                   onVisitStatusChange={onVisitStatusChange}
+                  days={days}
+                  onMoveToDay={onMoveToDay}
+                  onMoveToCandidate={onMoveToCandidate}
+                  timelineEntry={timelineEntries?.get(place.id)}
                 />
                 {next ? (
                   <TravelLegRow
