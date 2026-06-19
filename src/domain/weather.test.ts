@@ -5,8 +5,11 @@ import {
   getWeatherSuggestions,
   isDateInForecastRange,
   parseDailyWeather,
+  parseHourlyWeather,
   wmoDescription,
   openMeteoResponseSchema,
+  dailyWeatherSchema,
+  hourlyWeatherSchema,
   type DayWeather,
 } from './weather';
 
@@ -250,6 +253,87 @@ describe('openMeteoResponseSchema', () => {
       hourly: { time: [] },
     };
     expect(openMeteoResponseSchema.safeParse(noTime).success).toBe(false);
+  });
+});
+
+describe('dailyWeatherSchema – optional numeric arrays', () => {
+  it('accepts daily with only time (fallback mode)', () => {
+    expect(dailyWeatherSchema.safeParse({ time: ['2026-07-01'] }).success).toBe(true);
+  });
+
+  it('rejects daily without time', () => {
+    expect(dailyWeatherSchema.safeParse({ weather_code: [0] }).success).toBe(false);
+  });
+
+  it('accepts empty time with no other fields', () => {
+    expect(dailyWeatherSchema.safeParse({ time: [] }).success).toBe(true);
+  });
+});
+
+describe('hourlyWeatherSchema – optional numeric arrays', () => {
+  it('accepts hourly with only time (fallback mode)', () => {
+    expect(hourlyWeatherSchema.safeParse({ time: ['2026-07-01T00:00'] }).success).toBe(true);
+  });
+
+  it('rejects hourly without time', () => {
+    expect(hourlyWeatherSchema.safeParse({ temperature_2m: [20] }).success).toBe(false);
+  });
+});
+
+describe('parseDailyWeather – optional/missing arrays', () => {
+  it('returns null for all optional fields when they are absent', () => {
+    const daily = parseDailyWeather({ time: ['2026-07-01', '2026-07-02'] });
+    expect(daily).toHaveLength(2);
+    expect(daily[0].weatherCode).toBeNull();
+    expect(daily[0].tempMaxC).toBeNull();
+    expect(daily[0].tempMinC).toBeNull();
+    expect(daily[0].uvIndexMax).toBeNull();
+    expect(daily[0].sunrise).toBeNull();
+    expect(daily[0].sunset).toBeNull();
+    expect(daily[1].precipProbabilityMax).toBeNull();
+  });
+
+  it('returns present fallback fields and null for absent fields', () => {
+    const daily = parseDailyWeather({
+      time: ['2026-07-01'],
+      weather_code: [0],
+      temperature_2m_max: [28],
+      temperature_2m_min: [20],
+      precipitation_sum: [0],
+    });
+    expect(daily[0].weatherCode).toBe(0);
+    expect(daily[0].tempMaxC).toBe(28);
+    expect(daily[0].tempMinC).toBe(20);
+    expect(daily[0].precipitationMm).toBe(0);
+    expect(daily[0].uvIndexMax).toBeNull();
+    expect(daily[0].apparentTempMaxC).toBeNull();
+    expect(daily[0].windSpeedMaxKmh).toBeNull();
+    expect(daily[0].sunrise).toBeNull();
+  });
+});
+
+describe('parseHourlyWeather – optional/missing arrays', () => {
+  it('returns null for all optional fields when they are absent', () => {
+    const hourly = parseHourlyWeather({ time: ['2026-07-01T00:00', '2026-07-01T01:00'] });
+    expect(hourly).toHaveLength(2);
+    expect(hourly[0].tempC).toBeNull();
+    expect(hourly[0].apparentTempC).toBeNull();
+    expect(hourly[0].precipProbability).toBeNull();
+    expect(hourly[0].weatherCode).toBeNull();
+    expect(hourly[0].windSpeedKmh).toBeNull();
+  });
+
+  it('returns present fallback fields and null for absent fields', () => {
+    const hourly = parseHourlyWeather({
+      time: ['2026-07-01T00:00'],
+      temperature_2m: [21],
+      precipitation_probability: [10],
+    });
+    expect(hourly[0].tempC).toBe(21);
+    expect(hourly[0].precipProbability).toBe(10);
+    expect(hourly[0].apparentTempC).toBeNull();
+    expect(hourly[0].weatherCode).toBeNull();
+    expect(hourly[0].windSpeedKmh).toBeNull();
   });
 });
 
