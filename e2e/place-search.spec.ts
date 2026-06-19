@@ -94,7 +94,7 @@ test('search → select → add → address saved → restored after reload', as
   await page.getByRole('searchbox', { name: '場所のキーワード' }).fill('清水寺');
   await page.getByRole('button', { name: '検索' }).click();
 
-  const result = page.getByRole('button', { name: /清水寺/ });
+  const result = page.getByRole('button', { name: '清水寺 を日程に追加' });
   await expect(result).toBeVisible();
   await result.click();
 

@@ -1,10 +1,12 @@
 import type { z } from 'zod';
 import type {
+  candidatePlaceRecordSchema,
   checklistItemRecordSchema,
   expenseRecordSchema,
   expenseShareRecordSchema,
   participantRecordSchema,
   placeRecordSchema,
+  reservationRecordSchema,
   tripDayRecordSchema,
   tripRecordSchema,
 } from '@/validation/schemas';
@@ -22,3 +24,5 @@ export type ParticipantRecord = z.infer<typeof participantRecordSchema>;
 export type ExpenseRecord = z.infer<typeof expenseRecordSchema>;
 export type ExpenseShareRecord = z.infer<typeof expenseShareRecordSchema>;
 export type ChecklistItemRecord = z.infer<typeof checklistItemRecordSchema>;
+export type CandidatePlaceRecord = z.infer<typeof candidatePlaceRecordSchema>;
+export type ReservationRecord = z.infer<typeof reservationRecordSchema>;

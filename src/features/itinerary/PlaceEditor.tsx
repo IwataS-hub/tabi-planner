@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Copy, Crosshair, Trash2 } from 'lucide-react';
+import { Copy, Crosshair, Trash2, ArrowRightFromLine, BookmarkMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,9 +14,10 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { CATEGORY_LIST } from '@/domain/categories';
-import type { Place, PlaceCategory, VisitStatus } from '@/domain/types';
+import type { Place, PlaceCategory, TripDay, VisitStatus } from '@/domain/types';
 import { DEFAULT_PLACE_NAME, type PlacePatch } from '@/repositories/placeRepository';
 import { isHttpUrl } from '@/lib/utils';
+import { MoveToDayDialog } from './MoveToDayDialog';
 
 interface PlaceEditorProps {
   place: Place;
@@ -24,6 +25,12 @@ interface PlaceEditorProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onFocusOnMap: () => void;
+  /** List of days for the cross-day move dialog. */
+  days?: TripDay[];
+  /** Called when the user wants to move this place to another day. */
+  onMoveToDay?: (id: string, targetDayId: string) => void;
+  /** Called when the user wants to move this place to the candidate pool. */
+  onMoveToCandidate?: (id: string) => void;
 }
 
 interface PlaceForm {
@@ -110,10 +117,14 @@ export function PlaceEditor({
   onDuplicate,
   onDelete,
   onFocusOnMap,
+  days,
+  onMoveToDay,
+  onMoveToCandidate,
 }: PlaceEditorProps) {
   const fieldId = useId();
   const [form, setForm] = useState<PlaceForm>(() => toForm(place));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [moveDayOpen, setMoveDayOpen] = useState(false);
 
   // Snapshot of the last persisted form (written only inside flush, never
   // during render). `latestRef` mirrors the current props/state and is updated
@@ -390,6 +401,23 @@ export function PlaceEditor({
           <Copy aria-hidden />
           複製
         </Button>
+        {onMoveToDay && days && days.length > 1 && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setMoveDayOpen(true)}>
+            <ArrowRightFromLine aria-hidden />
+            別の日へ
+          </Button>
+        )}
+        {onMoveToCandidate && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onMoveToCandidate(place.id)}
+          >
+            <BookmarkMinus aria-hidden />
+            候補へ戻す
+          </Button>
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -411,6 +439,16 @@ export function PlaceEditor({
         destructive
         onConfirm={onDelete}
       />
+
+      {onMoveToDay && days && (
+        <MoveToDayDialog
+          open={moveDayOpen}
+          onOpenChange={setMoveDayOpen}
+          days={days}
+          currentDayId={place.dayId}
+          onSelect={(targetDayId) => onMoveToDay(place.id, targetDayId)}
+        />
+      )}
     </div>
   );
 }

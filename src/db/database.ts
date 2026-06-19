@@ -1,10 +1,12 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
+  CandidatePlaceRecord,
   ChecklistItemRecord,
   ExpenseRecord,
   ExpenseShareRecord,
   ParticipantRecord,
   PlaceRecord,
+  ReservationRecord,
   TripDayRecord,
   TripRecord,
 } from './records';
@@ -26,6 +28,8 @@ export class TabioriDatabase extends Dexie {
   expenses!: EntityTable<ExpenseRecord, 'id'>;
   expenseShares!: EntityTable<ExpenseShareRecord, 'id'>;
   checklistItems!: EntityTable<ChecklistItemRecord, 'id'>;
+  candidatePlaces!: EntityTable<CandidatePlaceRecord, 'id'>;
+  reservations!: EntityTable<ReservationRecord, 'id'>;
 
   constructor(name = 'tabiori') {
     super(name);
@@ -47,6 +51,19 @@ export class TabioriDatabase extends Dexie {
       expenses: 'id, tripId, dayId, placeId, payerId',
       expenseShares: 'id, expenseId, participantId',
       checklistItems: 'id, tripId, [tripId+order], kind',
+    });
+
+    // v3 — Phase 2.4: candidatePlaces, reservations.
+    this.version(3).stores({
+      trips: 'id, updatedAt, startDate',
+      days: 'id, tripId, [tripId+order], date',
+      places: 'id, tripId, dayId, [dayId+order]',
+      participants: 'id, tripId, [tripId+order]',
+      expenses: 'id, tripId, dayId, placeId, payerId',
+      expenseShares: 'id, expenseId, participantId',
+      checklistItems: 'id, tripId, [tripId+order], kind',
+      candidatePlaces: 'id, tripId, [tripId+order]',
+      reservations: 'id, tripId, dayId, placeId',
     });
   }
 }

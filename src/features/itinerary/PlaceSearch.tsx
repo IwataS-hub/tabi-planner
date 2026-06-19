@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { Loader2, MapPin, Plus, Search, SearchX } from 'lucide-react';
+import { Loader2, MapPin, Plus, Bookmark, Search, SearchX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { BiasCenter, GeoPlace } from '@/domain/geocoding';
@@ -12,6 +12,8 @@ interface PlaceSearchProps {
   service: GeocodingProvider | null;
   /** Add the chosen result to the current day. */
   onSelectResult: (place: GeoPlace) => void;
+  /** Save the chosen result as a candidate (unscheduled). */
+  onSaveAsCandidate?: (place: GeoPlace) => void;
   /** Resolve the current map center to bias ranking (optional). */
   getBias?: () => BiasCenter | null;
   /** Whether a day is currently selected (results can be added). */
@@ -32,7 +34,13 @@ const ATTRIBUTION = (
   </p>
 );
 
-export function PlaceSearch({ service, onSelectResult, getBias, canAdd }: PlaceSearchProps) {
+export function PlaceSearch({
+  service,
+  onSelectResult,
+  onSaveAsCandidate,
+  getBias,
+  canAdd,
+}: PlaceSearchProps) {
   const { state, search, reset } = usePlaceSearch({ service, getBias });
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +70,13 @@ export function PlaceSearch({ service, onSelectResult, getBias, canAdd }: PlaceS
     onSelectResult(place);
     reset();
     setQuery('');
-    // Keep keyboard users grounded after the chosen result unmounts.
+    inputRef.current?.focus();
+  };
+
+  const saveAsCandidate = (place: GeoPlace) => {
+    onSaveAsCandidate?.(place);
+    reset();
+    setQuery('');
     inputRef.current?.focus();
   };
 
@@ -174,17 +188,7 @@ export function PlaceSearch({ service, onSelectResult, getBias, canAdd }: PlaceS
           <ul aria-label="検索結果" className="space-y-1.5">
             {state.results.map((place, index) => (
               <li key={place.id}>
-                <button
-                  ref={(el) => {
-                    resultRefs.current[index] = el;
-                  }}
-                  type="button"
-                  onClick={() => choose(place)}
-                  onKeyDown={(event) => handleResultKeyDown(event, index)}
-                  disabled={!canAdd}
-                  className="border-border hover:bg-secondary/60 focus-visible:ring-ring flex w-full items-start gap-2 rounded-md border p-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
-                >
-                  <Plus className="text-ink-faint mt-0.5 size-4 shrink-0" aria-hidden />
+                <div className="border-border flex items-start gap-2 rounded-md border p-2">
                   <span className="min-w-0 flex-1">
                     <span className="text-foreground flex items-center gap-1.5">
                       <span className="truncate font-medium">{place.name}</span>
@@ -204,7 +208,34 @@ export function PlaceSearch({ service, onSelectResult, getBias, canAdd }: PlaceS
                       緯度 {place.latitude.toFixed(4)}・経度 {place.longitude.toFixed(4)}
                     </span>
                   </span>
-                </button>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    <button
+                      ref={(el) => {
+                        resultRefs.current[index] = el;
+                      }}
+                      type="button"
+                      onClick={() => choose(place)}
+                      onKeyDown={(event) => handleResultKeyDown(event, index)}
+                      disabled={!canAdd}
+                      aria-label={`${place.name} を日程に追加`}
+                      title="日程に追加"
+                      className="text-primary hover:bg-primary/10 focus-visible:ring-ring rounded p-1 transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40"
+                    >
+                      <Plus className="size-4" aria-hidden />
+                    </button>
+                    {onSaveAsCandidate && (
+                      <button
+                        type="button"
+                        onClick={() => saveAsCandidate(place)}
+                        aria-label={`${place.name} を候補に保存`}
+                        title="候補に保存"
+                        className="text-ink hover:bg-secondary/60 focus-visible:ring-ring rounded p-1 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <Bookmark className="size-4" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </li>
             ))}
           </ul>

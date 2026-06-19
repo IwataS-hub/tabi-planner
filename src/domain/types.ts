@@ -187,3 +187,66 @@ export interface ChecklistItem {
   createdAt: string;
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2.4: Candidate Places, Reservations
+// ---------------------------------------------------------------------------
+
+/**
+ * A candidate/unscheduled place that has not yet been assigned to a day.
+ * Kept in a separate table so the strict `dayId` constraint on Place is not
+ * loosened; mappers convert between the two when a candidate is promoted.
+ */
+export interface CandidatePlace {
+  id: string;
+  tripId: string;
+  name: string;
+  category: PlaceCategory;
+  latitude: number;
+  longitude: number;
+  address: string | null;
+  /** "HH:mm" 24h, or null. */
+  startTime: string | null;
+  /** Dwell time in minutes, or null. */
+  stayMinutes: number | null;
+  memo: string;
+  url: string;
+  estimatedCost: number | null;
+  visitStatus: VisitStatus;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const RESERVATION_KINDS = [
+  'lodging',
+  'transport',
+  'restaurant',
+  'event',
+  'activity',
+  'other',
+] as const;
+export type ReservationKind = (typeof RESERVATION_KINDS)[number];
+
+export interface Reservation {
+  id: string;
+  tripId: string;
+  /** Optional day this reservation is associated with, or null. */
+  dayId: string | null;
+  /** Optional place this reservation is tied to, or null. */
+  placeId: string | null;
+  kind: ReservationKind;
+  title: string;
+  /** ISO timestamp of start, or null. */
+  startAt: string | null;
+  /** ISO timestamp of end, or null. */
+  endAt: string | null;
+  location: string;
+  confirmationCode: string;
+  url: string;
+  phone: string;
+  memo: string;
+  isPrivate: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

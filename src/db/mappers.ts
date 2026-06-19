@@ -1,18 +1,22 @@
 import type {
+  CandidatePlace,
   ChecklistItem,
   Expense,
   ExpenseShare,
   Participant,
   Place,
+  Reservation,
   Trip,
   TripDay,
 } from '@/domain/types';
 import type {
+  CandidatePlaceRecord,
   ChecklistItemRecord,
   ExpenseRecord,
   ExpenseShareRecord,
   ParticipantRecord,
   PlaceRecord,
+  ReservationRecord,
   TripDayRecord,
   TripRecord,
 } from './records';
@@ -231,5 +235,89 @@ export function checklistItemToRecord(item: ChecklistItem): ChecklistItemRecord 
     order: item.order,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
+  };
+}
+
+export function candidatePlaceFromRecord(record: CandidatePlaceRecord): CandidatePlace {
+  return {
+    id: record.id,
+    tripId: record.tripId,
+    name: record.name,
+    category: record.category,
+    latitude: record.latitude,
+    longitude: record.longitude,
+    address: record.address,
+    startTime: record.startTime,
+    stayMinutes: record.stayMinutes,
+    memo: record.memo,
+    url: record.url,
+    estimatedCost: record.estimatedCost,
+    visitStatus: record.visitStatus,
+    order: record.order,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function candidatePlaceToRecord(c: CandidatePlace): CandidatePlaceRecord {
+  return {
+    id: c.id,
+    tripId: c.tripId,
+    name: c.name,
+    category: c.category,
+    latitude: c.latitude,
+    longitude: c.longitude,
+    address: c.address,
+    startTime: c.startTime,
+    stayMinutes: c.stayMinutes,
+    memo: c.memo,
+    url: c.url,
+    estimatedCost: c.estimatedCost,
+    visitStatus: c.visitStatus,
+    order: c.order,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+  };
+}
+
+export function reservationFromRecord(record: ReservationRecord): Reservation {
+  return {
+    id: record.id,
+    tripId: record.tripId,
+    dayId: record.dayId,
+    placeId: record.placeId,
+    kind: record.kind,
+    title: record.title,
+    startAt: record.startAt,
+    endAt: record.endAt,
+    location: record.location,
+    confirmationCode: record.confirmationCode,
+    url: record.url,
+    phone: record.phone,
+    memo: record.memo,
+    isPrivate: record.isPrivate,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function reservationToRecord(r: Reservation): ReservationRecord {
+  return {
+    id: r.id,
+    tripId: r.tripId,
+    dayId: r.dayId,
+    placeId: r.placeId,
+    kind: r.kind,
+    title: r.title,
+    startAt: r.startAt,
+    endAt: r.endAt,
+    location: r.location,
+    confirmationCode: r.confirmationCode,
+    url: r.url,
+    phone: r.phone,
+    memo: r.memo,
+    isPrivate: r.isPrivate,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
   };
 }
