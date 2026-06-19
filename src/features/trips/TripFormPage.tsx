@@ -13,6 +13,19 @@ import { toISODate } from '@/lib/date';
 import { tripRepository } from '@/repositories/tripRepository';
 import { fieldErrors, tripFormSchema } from '@/validation/schemas';
 
+interface TripTemplate {
+  label: string;
+  days: number;
+  description: string;
+}
+
+const TRIP_TEMPLATES: TripTemplate[] = [
+  { label: '日帰り', days: 1, description: '' },
+  { label: '1泊2日', days: 2, description: '' },
+  { label: 'ライブ遠征', days: 2, description: 'ライブ・コンサート遠征' },
+  { label: 'グルメ旅行', days: 3, description: 'ご当地グルメめぐり' },
+];
+
 interface TripFormPageProps {
   mode: 'create' | 'edit';
 }
@@ -92,6 +105,16 @@ function TripForm({ mode, tripId, initial }: TripFormProps) {
 
   const update = (patch: Partial<FormState>) => setForm((prev) => ({ ...prev, ...patch }));
 
+  const applyTemplate = (template: TripTemplate) => {
+    const startDate = form.startDate || toISODate(new Date());
+    const startParsed = new Date(startDate);
+    const endDate = toISODate(new Date(startParsed.getTime() + (template.days - 1) * 86_400_000));
+    update({
+      endDate,
+      description: template.description || form.description,
+    });
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const parsed = tripFormSchema.safeParse(form);
@@ -137,9 +160,27 @@ function TripForm({ mode, tripId, initial }: TripFormProps) {
       <h1 className="font-display text-foreground mb-1 text-2xl font-bold">
         {mode === 'create' ? '新しい旅行' : '旅行を編集'}
       </h1>
-      <p className="text-muted-foreground mb-6 text-sm">
+      <p className="text-muted-foreground mb-4 text-sm">
         旅行名と日程を決めましょう。日程はあとから変更でき、日数に合わせて自動で日が作られます。
       </p>
+
+      {mode === 'create' && (
+        <div className="mb-5 flex flex-wrap gap-2">
+          <span className="text-ink-soft self-center text-xs">テンプレート:</span>
+          {TRIP_TEMPLATES.map((t) => (
+            <Button
+              key={t.label}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => applyTemplate(t)}
+            >
+              {t.label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
         <div className="space-y-1.5">
