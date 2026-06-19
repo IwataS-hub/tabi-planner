@@ -1,11 +1,16 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, Printer } from 'lucide-react';
+import { ArrowLeft, CalendarArrowDown, Pencil, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Trip } from '@/domain/types';
 import { dayCount, formatJaDateRange } from '@/lib/date';
 import { SaveStatusBadge } from './SaveStatusBadge';
 
-export function ItineraryHeader({ trip }: { trip: Trip }) {
+interface ItineraryHeaderProps {
+  trip: Trip;
+  onDownloadIcs?: () => void;
+}
+
+export function ItineraryHeader({ trip, onDownloadIcs }: ItineraryHeaderProps) {
   return (
     <header className="border-border bg-paper/90 sticky top-0 z-20 shrink-0 border-b backdrop-blur">
       <div className="flex h-14 items-center gap-3 px-3 sm:px-4">
@@ -26,6 +31,18 @@ export function ItineraryHeader({ trip }: { trip: Trip }) {
         </div>
 
         <SaveStatusBadge />
+
+        {onDownloadIcs && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="カレンダーに書き出し (.ics)"
+            onClick={onDownloadIcs}
+            title="カレンダーに書き出し"
+          >
+            <CalendarArrowDown aria-hidden />
+          </Button>
+        )}
 
         <Button
           variant="ghost"

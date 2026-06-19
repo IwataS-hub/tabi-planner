@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Map as MapIcon, ListChecks } from 'lucide-react';
+import { Map as MapIcon, ListChecks, BookmarkCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorView, LoadingView } from '@/components/StateViews';
@@ -14,16 +14,30 @@ import {
 } from '@/domain/routing';
 import type { LatLng, Place, VisitStatus } from '@/domain/types';
 import { summarizeDay } from '@/domain/summary';
+import { computeTimeline } from '@/domain/timeline';
+import { computeWarnings } from '@/domain/itineraryWarnings';
+import { generateIcs } from '@/domain/icsExport';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
-import { useTrip, useTripDays, useTripPlaces } from '@/hooks/useTripData';
+import {
+  useTrip,
+  useTripDays,
+  useTripPlaces,
+  useTripCandidates,
+  useTripReservations,
+} from '@/hooks/useTripData';
 import {
   placeRepository,
+  movePlaceToDay,
+  movePlaceToCandidate,
   reverseGeocodePatch,
   type PlacePatch,
 } from '@/repositories/placeRepository';
+import { candidatePlaceRepository } from '@/repositories/candidatePlaceRepository';
+import { reservationRepository } from '@/repositories/reservationRepository';
 import { getGeocodingService } from '@/services/geocoding/geocodingService';
 import { getRoutingService } from '@/services/routing/routingService';
+import { downloadTextFile } from '@/lib/download';
 import { ItineraryHeader } from './ItineraryHeader';
 import { TripNav } from './TripNav';
 import { DayTabs } from './DayTabs';
@@ -33,6 +47,9 @@ import { PlaceSearch } from './PlaceSearch';
 import { MapPanel } from './MapPanel';
 import { PrintItinerary } from './PrintItinerary';
 import { WeatherWidget } from './WeatherWidget';
+import { CandidateList } from './CandidateList';
+import { ReservationsSection, type ReservationSaveInput } from './ReservationsSection';
+import { WarningsCard } from './WarningsCard';
 
 export function ItineraryPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -42,6 +59,8 @@ export function ItineraryPage() {
   const trip = useTrip(tripId);
   const days = useTripDays(tripId);
   const places = useTripPlaces(tripId);
+  const candidates = useTripCandidates(tripId);
+  const reservations = useTripReservations(tripId);
 
   const [chosenDayId, setChosenDayId] = useState<string | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
@@ -49,26 +68,19 @@ export function ItineraryPage() {
   const [flyNonce, setFlyNonce] = useState(0);
   const [flyToCoord, setFlyToCoord] = useState<LatLng | null>(null);
   const [flyCoordNonce, setFlyCoordNonce] = useState(0);
+  const [showCandidates, setShowCandidates] = useState(true);
 
-  // Resolved once; null when no API key is configured (search stays disabled,
-  // manual map-click adds keep working).
   const geocodingService = useMemo(() => getGeocodingService(), []);
   const routingService = useMemo(() => getRoutingService(), []);
 
-  // Currently highlighted leg (fromPlace id) and the in-session route shapes,
-  // keyed by routeKey. Geometry is NEVER persisted: it lives only here and in
-  // the routing cache, and is gone after a reload (saved time/distance remain).
   const [selectedLegId, setSelectedLegId] = useState<string | null>(null);
   const [routeGeometries, setRouteGeometries] = useState<Map<string, LatLng[]>>(() => new Map());
-  // Current map center, kept in a ref so it can bias searches without causing
-  // re-renders on every pan.
   const mapCenterRef = useRef<LatLng | null>(null);
   const getBias = useCallback<() => BiasCenter | null>(() => mapCenterRef.current, []);
   const handleCenterChange = useCallback((center: LatLng) => {
     mapCenterRef.current = center;
   }, []);
 
-  // In-flight reverse-geocode requests, aborted if the page unmounts.
   const reverseControllers = useRef<Set<AbortController>>(new Set());
   useEffect(() => {
     const controllers = reverseControllers.current;
@@ -77,12 +89,11 @@ export function ItineraryPage() {
     };
   }, []);
 
-  const dayList = days.data ?? [];
+  const dayList = useMemo(() => days.data ?? [], [days.data]);
   const placeList = useMemo(() => places.data ?? [], [places.data]);
+  const candidateList = useMemo(() => candidates.data ?? [], [candidates.data]);
+  const reservationList = useMemo(() => reservations.data ?? [], [reservations.data]);
 
-  // Derive the active day: the user's choice when still valid, else the first
-  // day. This recovers automatically if the chosen day disappears (e.g. the
-  // trip range was shortened) without needing a synchronising effect.
   const selectedDayId =
     chosenDayId && dayList.some((day) => day.id === chosenDayId)
       ? chosenDayId
@@ -103,8 +114,33 @@ export function ItineraryPage() {
     [placeList, selectedDayId],
   );
 
-  // When a new calculation starts, drop any in-memory geometry for the leg's
-  // current route key so the old shape is not shown during or after a failure.
+  // Timeline computed from current day's places
+  const timelineEntries = useMemo(() => {
+    const entries = computeTimeline(placesForDay);
+    return new Map(entries.map((e) => [e.placeId, e]));
+  }, [placesForDay]);
+
+  // Warnings computed for the entire trip
+  const warnings = useMemo(() => {
+    if (!trip.data) return [];
+    const placesByDay: Record<string, Place[]> = {};
+    const timelineByDay: Record<string, ReturnType<typeof computeTimeline>> = {};
+    for (const day of dayList) {
+      const dp = placeList.filter((p) => p.dayId === day.id);
+      placesByDay[day.id] = dp;
+      timelineByDay[day.id] = computeTimeline(dp);
+    }
+    return computeWarnings({
+      trip: { budgetYen: trip.data.budgetYen },
+      days: dayList,
+      placesByDay,
+      timelineByDay,
+      reservations: reservationList,
+      candidatePlaces: candidateList,
+      totalSpentYen: null, // expense totals not loaded here
+    });
+  }, [trip.data, dayList, placeList, reservationList, candidateList]);
+
   const handleLegCalculationStart = useCallback(
     (fromPlaceId: string) => {
       const from = placesForDay.find((p) => p.id === fromPlaceId);
@@ -120,9 +156,6 @@ export function ItineraryPage() {
     [placesForDay],
   );
 
-  // Switching a leg to public transit: clear any in-memory route shape for it
-  // and persist the transit choice (a no-op when it would overwrite a saved
-  // walk/drive/bicycle auto estimate, which is preserved).
   const handleTransitSelected = useCallback(
     (fromPlaceId: string) => {
       const from = placesForDay.find((p) => p.id === fromPlaceId);
@@ -148,7 +181,6 @@ export function ItineraryPage() {
 
   const daySummary = useMemo(() => summarizeDay(placesForDay), [placesForDay]);
 
-  // --- mutations (all routed through the save-status tracker) -------------
   const selectPlace = (id: string) => {
     setSelectedPlaceId(id);
     setFlyNonce((value) => value + 1);
@@ -162,12 +194,6 @@ export function ItineraryPage() {
     }
   };
 
-  /**
-   * Best-effort reverse geocoding for a just-added place. Runs in the
-   * background: the place already exists, so a failure (or a slow response)
-   * never blocks or undoes the add. The current persisted place is re-read at
-   * apply time so a late result can't overwrite a user edit or a deleted place.
-   */
   const reverseGeocode = useCallback(
     async (placeId: string, coord: LatLng) => {
       if (!geocodingService) return;
@@ -180,11 +206,11 @@ export function ItineraryPage() {
           signal: controller.signal,
         });
         const current = await placeRepository.get(placeId);
-        if (!current) return; // deleted meanwhile — never recreate
+        if (!current) return;
         const patch = reverseGeocodePatch(current, result);
         if (patch) await placeRepository.update(placeId, patch);
       } catch {
-        // Reverse geocoding is best-effort; swallow so the main flow is unaffected.
+        // best-effort
       } finally {
         reverseControllers.current.delete(controller);
       }
@@ -194,7 +220,6 @@ export function ItineraryPage() {
 
   const handleMapClick = async (latlng: LatLng) => {
     if (!tripId || !selectedDayId) return;
-    // Add immediately (unchanged behaviour); enrich in the background.
     const created = await track(() =>
       placeRepository.add({
         tripId,
@@ -228,6 +253,19 @@ export function ItineraryPage() {
     }
   };
 
+  const handleSaveAsCandidate = async (place: GeoPlace) => {
+    if (!tripId) return;
+    await track(() =>
+      candidatePlaceRepository.add({
+        tripId,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        name: place.name,
+        address: place.address,
+      }),
+    );
+  };
+
   const handleSave = (id: string, patch: PlacePatch) => {
     void track(() => placeRepository.update(id, patch));
   };
@@ -253,11 +291,47 @@ export function ItineraryPage() {
 
   const handleFocusOnMap = (id: string) => selectPlace(id);
 
-  /**
-   * Persist a freshly computed leg estimate and remember its route shape for
-   * the map (in memory only). The repository re-checks segment identity, so a
-   * result that arrived after a reorder/delete is simply dropped.
-   */
+  const handleMoveToDay = (placeId: string, targetDayId: string) => {
+    void track(() => movePlaceToDay(placeId, targetDayId));
+    if (selectedPlaceId === placeId) setSelectedPlaceId(null);
+  };
+
+  const handleMoveToCandidate = (placeId: string) => {
+    void track(() => movePlaceToCandidate(placeId));
+    if (selectedPlaceId === placeId) setSelectedPlaceId(null);
+  };
+
+  const handlePromoteCandidate = (candidateId: string, targetDayId: string) => {
+    void track(() => candidatePlaceRepository.promoteToDay(candidateId, targetDayId));
+  };
+
+  const handleRemoveCandidate = (id: string) => {
+    void track(() => candidatePlaceRepository.remove(id));
+  };
+
+  const handleReorderCandidates = (orderedIds: string[]) => {
+    if (!tripId) return;
+    void track(() => candidatePlaceRepository.reorder(tripId, orderedIds));
+  };
+
+  const handleAddReservation = (input: ReservationSaveInput) => {
+    if (!tripId) return;
+    void track(() =>
+      reservationRepository.add({
+        tripId,
+        ...input,
+      }),
+    );
+  };
+
+  const handleEditReservation = (id: string, input: ReservationSaveInput) => {
+    void track(() => reservationRepository.update(id, input));
+  };
+
+  const handleDeleteReservation = (id: string) => {
+    void track(() => reservationRepository.remove(id));
+  };
+
   const handleLegResult = useCallback(
     (fromPlace: Place, toPlace: Place, mode: TravelMode, estimate: RouteEstimate) => {
       const key = routeKey(
@@ -295,9 +369,6 @@ export function ItineraryPage() {
     [track],
   );
 
-  // The real-route shape for the selected leg, if it was computed this session.
-  // After a reload there is no geometry (only saved time/distance), so the map
-  // falls back to the straight itinerary line.
   const activeRouteGeometry = useMemo(() => {
     if (!selectedLegId) return null;
     const from = placesForDay.find((place) => place.id === selectedLegId);
@@ -305,7 +376,30 @@ export function ItineraryPage() {
     return routeGeometries.get(from.travelRouteKey) ?? null;
   }, [selectedLegId, placesForDay, routeGeometries]);
 
-  // --- loading / error / not found ---------------------------------------
+  // Timeline for all days (used for print and ICS)
+  const printTimeline = useMemo(() => {
+    const result: Record<string, ReturnType<typeof computeTimeline>> = {};
+    for (const day of dayList) {
+      const dp = placeList.filter((p) => p.dayId === day.id);
+      result[day.id] = computeTimeline(dp);
+    }
+    return result;
+  }, [dayList, placeList]);
+
+  const handleDownloadIcs = () => {
+    if (!trip.data) return;
+    const placesByDay: Record<string, Place[]> = {};
+    const timelineByDay: Record<string, ReturnType<typeof computeTimeline>> = {};
+    for (const day of dayList) {
+      const dp = placeList.filter((p) => p.dayId === day.id);
+      placesByDay[day.id] = dp;
+      timelineByDay[day.id] = computeTimeline(dp);
+    }
+    const ics = generateIcs(trip.data, dayList, placesByDay, timelineByDay, reservationList);
+    const title = trip.data.title.replace(/[<>:"/\\|?*]/g, '_').slice(0, 40);
+    downloadTextFile(`tabiori_${title}.ics`, ics, 'text/calendar');
+  };
+
   if (trip.status === 'loading' || days.status === 'loading') {
     return (
       <PageShell>
@@ -335,6 +429,8 @@ export function ItineraryPage() {
     );
   }
 
+  const warningsForDay = warnings.filter((w) => w.dayId === selectedDayId || w.dayId === null);
+
   const listColumn = (
     <div className="space-y-3">
       <WeatherWidget
@@ -349,6 +445,7 @@ export function ItineraryPage() {
         getBias={getBias}
         canAdd={selectedDayId !== null}
         onSelectResult={handleSelectSearchResult}
+        onSaveAsCandidate={handleSaveAsCandidate}
       />
       <PlaceList
         places={placesForDay}
@@ -366,7 +463,61 @@ export function ItineraryPage() {
         onLegCalculationStart={handleLegCalculationStart}
         onTransitSelected={handleTransitSelected}
         onVisitStatusChange={handleVisitStatusChange}
+        days={dayList}
+        onMoveToDay={handleMoveToDay}
+        onMoveToCandidate={handleMoveToCandidate}
+        timelineEntries={timelineEntries}
       />
+      {warningsForDay.length > 0 && (
+        <WarningsCard warnings={warningsForDay} dayId={selectedDayId} title="この日の警告" />
+      )}
+      <ReservationsSection
+        reservations={reservationList.filter((r) => r.dayId === selectedDayId || r.dayId === null)}
+        days={dayList}
+        onAdd={handleAddReservation}
+        onEdit={handleEditReservation}
+        onDelete={handleDeleteReservation}
+      />
+      {/* Candidate places box */}
+      <section
+        aria-labelledby="candidates-heading"
+        className="bg-card rounded-xl border p-3 shadow-sm"
+      >
+        <button
+          type="button"
+          onClick={() => setShowCandidates((v) => !v)}
+          className="flex w-full items-center justify-between"
+          aria-expanded={showCandidates}
+          aria-controls="candidates-body"
+          id="candidates-heading"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <BookmarkCheck className="size-4" aria-hidden />
+            候補スポット
+            {candidateList.length > 0 && (
+              <span className="bg-secondary text-ink-soft rounded px-1.5 py-0.5 text-[10px]">
+                {candidateList.length}
+              </span>
+            )}
+          </span>
+          {showCandidates ? (
+            <ChevronUp className="text-muted-foreground size-4" aria-hidden />
+          ) : (
+            <ChevronDown className="text-muted-foreground size-4" aria-hidden />
+          )}
+        </button>
+        {showCandidates && (
+          <div id="candidates-body" className="mt-2">
+            <CandidateList
+              candidates={candidateList}
+              days={dayList}
+              onPromote={handlePromoteCandidate}
+              onRemove={handleRemoveCandidate}
+              onReorder={handleReorderCandidates}
+            />
+          </div>
+        )}
+      </section>
     </div>
   );
 
@@ -389,7 +540,7 @@ export function ItineraryPage() {
   return (
     <>
       <div className="flex h-dvh flex-col overflow-hidden print:hidden">
-        <ItineraryHeader trip={trip.data} />
+        <ItineraryHeader trip={trip.data} onDownloadIcs={handleDownloadIcs} />
         <TripNav tripId={trip.data.id} />
 
         <div className="border-border bg-paper shrink-0 space-y-2 border-b px-3 py-2 sm:px-4">
@@ -432,7 +583,14 @@ export function ItineraryPage() {
           )}
         </div>
       </div>
-      <PrintItinerary trip={trip.data} days={dayList} places={placeList} />
+      <PrintItinerary
+        trip={trip.data}
+        days={dayList}
+        places={placeList}
+        candidatePlaces={candidateList}
+        reservations={reservationList}
+        timelineByDay={printTimeline}
+      />
     </>
   );
 }

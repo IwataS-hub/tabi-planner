@@ -1,11 +1,13 @@
 import { db } from '@/db/database';
 import { dayFromRecord, tripFromRecord } from '@/db/mappers';
 import type {
+  CandidatePlaceRecord,
   ChecklistItemRecord,
   ExpenseRecord,
   ExpenseShareRecord,
   ParticipantRecord,
   PlaceRecord,
+  ReservationRecord,
   TripDayRecord,
   TripRecord,
 } from '@/db/records';
@@ -15,11 +17,13 @@ import { eachDateInRange } from '@/lib/date';
 import { createId } from '@/lib/utils';
 import { reconcileAutoTravelInDay } from './placeRepository';
 import {
+  candidatePlaceRecordSchema,
   checklistItemRecordSchema,
   expenseRecordSchema,
   expenseShareRecordSchema,
   participantRecordSchema,
   placeRecordSchema,
+  reservationRecordSchema,
   tripDayRecordSchema,
   tripFormSchema,
   tripRecordSchema,
@@ -189,6 +193,8 @@ export const tripRepository = {
       validateRecord(tripDayRecordSchema, day, '日付データ'),
     );
     const places = await db.places.where('tripId').equals(id).toArray();
+    const candidates = await db.candidatePlaces.where('tripId').equals(id).sortBy('order');
+    const checklistItems = await db.checklistItems.where('tripId').equals(id).sortBy('order');
 
     const now = nowIso();
     const newTripId = createId();
@@ -219,18 +225,66 @@ export const tripRepository = {
           tripId: newTripId,
           dayId,
           visitStatus: null,
+          // Drop auto route estimates; stale after copy
+          travelMode:
+            place.travelEstimateSource === 'manual' && place.travelMode === 'transit'
+              ? ('transit' as const)
+              : null,
+          travelDistanceMeters: null,
+          travelEstimateSource:
+            place.travelEstimateSource === 'manual' ? ('manual' as const) : null,
+          travelToPlaceId: null,
+          travelRouteKey: null,
+          travelCalculatedAt: null,
           createdAt: now,
           updatedAt: now,
         },
         'スポットの複製',
       );
     });
+    const newCandidates: CandidatePlaceRecord[] = candidates.map((c, index) =>
+      validateRecord(
+        candidatePlaceRecordSchema,
+        {
+          ...c,
+          id: createId(),
+          tripId: newTripId,
+          visitStatus: 'planned',
+          order: index,
+          createdAt: now,
+          updatedAt: now,
+        },
+        '候補スポットの複製',
+      ),
+    );
+    const newChecklistItems: ChecklistItemRecord[] = checklistItems.map((item, index) =>
+      validateRecord(
+        checklistItemRecordSchema,
+        {
+          ...item,
+          id: createId(),
+          tripId: newTripId,
+          completed: false,
+          order: index,
+          createdAt: now,
+          updatedAt: now,
+        },
+        'チェックリストの複製',
+      ),
+    );
+    // Reservations are NOT copied (personal booking info shouldn't auto-copy)
 
-    await db.transaction('rw', db.trips, db.days, db.places, async () => {
-      await db.trips.add(newTrip);
-      await db.days.bulkAdd(newDays);
-      if (newPlaces.length > 0) await db.places.bulkAdd(newPlaces);
-    });
+    await db.transaction(
+      'rw',
+      [db.trips, db.days, db.places, db.candidatePlaces, db.checklistItems],
+      async () => {
+        await db.trips.add(newTrip);
+        await db.days.bulkAdd(newDays);
+        if (newPlaces.length > 0) await db.places.bulkAdd(newPlaces);
+        if (newCandidates.length > 0) await db.candidatePlaces.bulkAdd(newCandidates);
+        if (newChecklistItems.length > 0) await db.checklistItems.bulkAdd(newChecklistItems);
+      },
+    );
     return tripFromRecord(newTrip);
   },
 
@@ -245,9 +299,10 @@ export const tripRepository = {
         db.expenses,
         db.expenseShares,
         db.checklistItems,
+        db.candidatePlaces,
+        db.reservations,
       ],
       async () => {
-        // Delete expense shares for all expenses in this trip
         const expenses = await db.expenses.where('tripId').equals(id).toArray();
         const expenseIds = expenses.map((e) => e.id);
         if (expenseIds.length > 0) {
@@ -256,6 +311,8 @@ export const tripRepository = {
         await db.expenses.where('tripId').equals(id).delete();
         await db.participants.where('tripId').equals(id).delete();
         await db.checklistItems.where('tripId').equals(id).delete();
+        await db.candidatePlaces.where('tripId').equals(id).delete();
+        await db.reservations.where('tripId').equals(id).delete();
         await db.places.where('tripId').equals(id).delete();
         await db.days.where('tripId').equals(id).delete();
         await db.trips.delete(id);
@@ -301,7 +358,24 @@ export const tripRepository = {
       (item) => validateRecord(checklistItemRecordSchema, item, 'チェックリストデータ'),
     );
 
-    return buildBackup(trip, days, places, participants, expenses, expenseShares, checklistItems);
+    const candidatePlaces = (
+      await db.candidatePlaces.where('tripId').equals(id).sortBy('order')
+    ).map((c) => validateRecord(candidatePlaceRecordSchema, c, '候補スポットデータ'));
+    const reservations = (await db.reservations.where('tripId').equals(id).toArray()).map((r) =>
+      validateRecord(reservationRecordSchema, r, '予約データ'),
+    );
+
+    return buildBackup(
+      trip,
+      days,
+      places,
+      participants,
+      expenses,
+      expenseShares,
+      checklistItems,
+      candidatePlaces,
+      reservations,
+    );
   },
 
   async importBackup(backup: TripBackup): Promise<Trip> {
@@ -323,6 +397,8 @@ export const tripRepository = {
         db.expenses,
         db.expenseShares,
         db.checklistItems,
+        db.candidatePlaces,
+        db.reservations,
       ],
       async () => {
         const existingTitles = new Set((await db.trips.toArray()).map((trip) => trip.title));
@@ -511,6 +587,44 @@ export const tripRepository = {
           );
         });
 
+        // Candidate places
+        const orderedCandidates = [...backup.candidatePlaces].sort(
+          (a, b) => a.order - b.order || a.id.localeCompare(b.id),
+        );
+        const newCandidates: CandidatePlaceRecord[] = orderedCandidates.map((c, index) =>
+          validateRecord(
+            candidatePlaceRecordSchema,
+            {
+              ...c,
+              id: createId(),
+              tripId: newTripId,
+              order: index,
+              createdAt: now,
+              updatedAt: now,
+            },
+            '候補スポットの読み込み',
+          ),
+        );
+
+        // Reservations — remap dayId and placeId references
+        const newReservations: ReservationRecord[] = backup.reservations.map((r) => {
+          const newDayId = r.dayId ? (dayIdMap.get(r.dayId) ?? null) : null;
+          const newPlaceId = r.placeId ? (placeIdMap.get(r.placeId) ?? null) : null;
+          return validateRecord(
+            reservationRecordSchema,
+            {
+              ...r,
+              id: createId(),
+              tripId: newTripId,
+              dayId: newDayId,
+              placeId: newPlaceId,
+              createdAt: now,
+              updatedAt: now,
+            },
+            '予約の読み込み',
+          );
+        });
+
         await db.trips.add(newTrip);
         await db.days.bulkAdd(newDays);
         if (newPlaces.length > 0) await db.places.bulkAdd(newPlaces);
@@ -518,6 +632,8 @@ export const tripRepository = {
         if (newExpenses.length > 0) await db.expenses.bulkAdd(newExpenses);
         if (newShares.length > 0) await db.expenseShares.bulkAdd(newShares);
         if (newChecklistItems.length > 0) await db.checklistItems.bulkAdd(newChecklistItems);
+        if (newCandidates.length > 0) await db.candidatePlaces.bulkAdd(newCandidates);
+        if (newReservations.length > 0) await db.reservations.bulkAdd(newReservations);
         for (const day of newDays) await reconcileAutoTravelInDay(day.id);
         savedTrip = newTrip;
       },

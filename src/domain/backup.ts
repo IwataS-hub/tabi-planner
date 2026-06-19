@@ -1,19 +1,23 @@
 import { z } from 'zod';
 import {
+  candidatePlaceRecordSchema,
   checklistItemRecordSchema,
   expenseRecordSchema,
   expenseShareRecordSchema,
   participantRecordSchema,
   placeRecordSchema,
+  reservationRecordSchema,
   tripDayRecordSchema,
   tripRecordSchema,
 } from '@/validation/schemas';
 import type {
+  CandidatePlaceRecord,
   ChecklistItemRecord,
   ExpenseRecord,
   ExpenseShareRecord,
   ParticipantRecord,
   PlaceRecord,
+  ReservationRecord,
   TripDayRecord,
   TripRecord,
 } from '@/db/records';
@@ -39,6 +43,9 @@ export const tripBackupSchema = z.object({
   expenses: z.array(expenseRecordSchema).optional().default([]),
   expenseShares: z.array(expenseShareRecordSchema).optional().default([]),
   checklistItems: z.array(checklistItemRecordSchema).optional().default([]),
+  // Phase 2.4: optional arrays — default to [] for older backups
+  candidatePlaces: z.array(candidatePlaceRecordSchema).optional().default([]),
+  reservations: z.array(reservationRecordSchema).optional().default([]),
 });
 
 export type TripBackup = z.infer<typeof tripBackupSchema>;
@@ -59,6 +66,8 @@ export function buildBackup(
   expenses: ExpenseRecord[] = [],
   expenseShares: ExpenseShareRecord[] = [],
   checklistItems: ChecklistItemRecord[] = [],
+  candidatePlaces: CandidatePlaceRecord[] = [],
+  reservations: ReservationRecord[] = [],
 ): TripBackup {
   return {
     format: BACKUP_FORMAT,
@@ -71,6 +80,8 @@ export function buildBackup(
     expenses,
     expenseShares,
     checklistItems,
+    candidatePlaces,
+    reservations,
   };
 }
 
@@ -209,6 +220,24 @@ export function assertReferentialIntegrity(backup: TripBackup): void {
     }
     if (item.assigneeId != null && !participantIds.has(item.assigneeId)) {
       throw new BackupError('チェックリスト項目が参照する参加者が見つかりません。');
+    }
+  }
+
+  // Phase 2.4 referential integrity
+  for (const c of backup.candidatePlaces) {
+    if (c.tripId !== backup.trip.id) {
+      throw new BackupError('候補スポットが旅行と対応していません。');
+    }
+  }
+  for (const r of backup.reservations) {
+    if (r.tripId !== backup.trip.id) {
+      throw new BackupError('予約データが旅行と対応していません。');
+    }
+    if (r.dayId != null && !dayIds.has(r.dayId)) {
+      throw new BackupError('予約データが参照する日付データが見つかりません。');
+    }
+    if (r.placeId != null && !placeIds.has(r.placeId)) {
+      throw new BackupError('予約データが参照するスポットが見つかりません。');
     }
   }
 }
