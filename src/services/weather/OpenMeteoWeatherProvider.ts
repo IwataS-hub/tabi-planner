@@ -36,15 +36,15 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
   }
 
   async fetchWeather(request: WeatherRequest): Promise<TripWeather> {
-    const { coordinate, startDate, endDate, signal } = request;
+    const { coordinate, signal } = request;
+    // Always fetch 16 days from today; the app filters to the trip date range.
     const params = new URLSearchParams({
       latitude: coordinate.latitude.toString(),
       longitude: coordinate.longitude.toString(),
       daily: DAILY_VARS,
       hourly: HOURLY_VARS,
       timezone: 'Asia/Tokyo',
-      start_date: startDate,
-      end_date: endDate,
+      forecast_days: '16',
     });
     const url = `${BASE_URL}?${params.toString()}`;
 
@@ -66,18 +66,26 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
         throw new WeatherError(
           isTimeout ? 'timeout' : 'aborted',
           isTimeout
-            ? '天気情報の取得がタイムアウトしました'
+            ? '天気APIへの接続がタイムアウトしました'
             : '天気情報の取得がキャンセルされました',
           err,
         );
       }
-      throw new WeatherError('network', '天気情報の取得に失敗しました', err);
+      throw new WeatherError('network', '天気APIに接続できませんでした', err);
     } finally {
       clearTimeout(timeoutId);
     }
 
     if (!response.ok) {
-      throw new WeatherError('server', `天気サーバーがエラーを返しました (${response.status})`);
+      let reason = '';
+      try {
+        const errBody = (await response.json()) as { reason?: string };
+        if (typeof errBody.reason === 'string') reason = errBody.reason;
+      } catch {
+        // ignore parse failure; use generic message
+      }
+      const detail = reason ? `: ${reason}` : ` (${response.status})`;
+      throw new WeatherError('server', `天気APIがエラーを返しました${detail}`);
     }
 
     let json: unknown;
@@ -89,9 +97,12 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
 
     const parsed = openMeteoResponseSchema.safeParse(json);
     if (!parsed.success) {
+      if (import.meta.env.DEV) {
+        console.error('[Weather] schema parse failed:', parsed.error.issues[0]);
+      }
       throw new WeatherError(
         'invalid-response',
-        `天気データの形式が正しくありません: ${parsed.error.issues[0]?.message ?? '不明'}`,
+        `天気データの一部を読み取れませんでした: ${parsed.error.issues[0]?.message ?? '不明'}`,
       );
     }
 

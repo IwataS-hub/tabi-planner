@@ -46,7 +46,12 @@ function hourlyNearTime(
   return bestDiff <= 90 ? best : null; // within 90 minutes
 }
 
-function WeatherIcon({ code }: { code: number }) {
+function fmt(value: number | null, fn: (v: number) => number): string {
+  return value !== null ? String(fn(value)) : '—';
+}
+
+function WeatherIcon({ code }: { code: number | null }) {
+  if (code === null) return <span aria-hidden>—</span>;
   const desc = wmoDescription(code);
   const emoji =
     code === 0
@@ -93,24 +98,31 @@ function DayWeatherCard({
         <div className="flex items-center gap-1">
           <WeatherIcon code={dayWeather.weatherCode} />
           <span className="text-foreground font-medium">
-            {wmoDescription(dayWeather.weatherCode)}
+            {dayWeather.weatherCode !== null ? wmoDescription(dayWeather.weatherCode) : '—'}
           </span>
         </div>
         <div className="text-ink-soft text-xs">
-          🌡️ {Math.round(dayWeather.tempMaxC)}° / {Math.round(dayWeather.tempMinC)}°
+          🌡️ {fmt(dayWeather.tempMaxC, Math.round)}° / {fmt(dayWeather.tempMinC, Math.round)}°
           <span className="text-ink-faint">
             {' '}
-            (体感 {Math.round(dayWeather.apparentTempMaxC)}° /{' '}
-            {Math.round(dayWeather.apparentTempMinC)}°)
+            (体感 {fmt(dayWeather.apparentTempMaxC, Math.round)}° /{' '}
+            {fmt(dayWeather.apparentTempMinC, Math.round)}°)
           </span>
         </div>
         <div className="text-ink-soft text-xs">
-          ☔ {dayWeather.precipProbabilityMax}% / {dayWeather.precipitationMm.toFixed(1)}mm
+          ☔{' '}
+          {dayWeather.precipProbabilityMax !== null ? `${dayWeather.precipProbabilityMax}%` : '—'} /{' '}
+          {dayWeather.precipitationMm !== null ? `${dayWeather.precipitationMm.toFixed(1)}mm` : '—'}
         </div>
-        <div className="text-ink-soft text-xs">💨 {Math.round(dayWeather.windSpeedMaxKmh)}km/h</div>
-        <div className="text-ink-soft text-xs">☀️ UV{dayWeather.uvIndexMax}</div>
         <div className="text-ink-soft text-xs">
-          🌅 {dayWeather.sunrise.slice(11, 16)} / 🌇 {dayWeather.sunset.slice(11, 16)}
+          💨 {fmt(dayWeather.windSpeedMaxKmh, Math.round)}km/h
+        </div>
+        <div className="text-ink-soft text-xs">
+          ☀️ UV{dayWeather.uvIndexMax !== null ? dayWeather.uvIndexMax : '—'}
+        </div>
+        <div className="text-ink-soft text-xs">
+          🌅 {dayWeather.sunrise ? dayWeather.sunrise.slice(11, 16) : '—'} / 🌇{' '}
+          {dayWeather.sunset ? dayWeather.sunset.slice(11, 16) : '—'}
         </div>
       </div>
 
@@ -141,9 +153,16 @@ function DayWeatherCard({
                   {place.startTime} {place.name}
                 </span>
                 <WeatherIcon code={hourlyEntry.weatherCode} />
-                <span className="text-ink-soft">{Math.round(hourlyEntry.tempC)}°</span>
-                <span className="text-ink-soft">☔{hourlyEntry.precipProbability}%</span>
-                <span className="text-ink-soft">💨{Math.round(hourlyEntry.windSpeedKmh)}km/h</span>
+                <span className="text-ink-soft">{fmt(hourlyEntry.tempC, Math.round)}°</span>
+                <span className="text-ink-soft">
+                  ☔
+                  {hourlyEntry.precipProbability !== null
+                    ? `${hourlyEntry.precipProbability}%`
+                    : '—'}
+                </span>
+                <span className="text-ink-soft">
+                  💨{fmt(hourlyEntry.windSpeedKmh, Math.round)}km/h
+                </span>
               </div>
             );
           })}
@@ -151,6 +170,24 @@ function DayWeatherCard({
       )}
     </div>
   );
+}
+
+function weatherErrorMessage(err: unknown): string {
+  if (err instanceof WeatherError) {
+    switch (err.kind) {
+      case 'network':
+        return '天気APIに接続できませんでした';
+      case 'timeout':
+        return '天気APIへの接続がタイムアウトしました';
+      case 'server':
+        return err.message;
+      case 'invalid-response':
+        return '天気データの一部を読み取れませんでした';
+      default:
+        return err.message;
+    }
+  }
+  return err instanceof Error ? err.message : '天気情報の取得に失敗しました';
 }
 
 export function WeatherWidget({
@@ -200,7 +237,7 @@ export function WeatherWidget({
         if (err instanceof WeatherError && err.kind === 'out-of-range') {
           setStatus('out-of-range');
         } else {
-          setErrorMessage(err instanceof Error ? err.message : '天気情報の取得に失敗しました');
+          setErrorMessage(weatherErrorMessage(err));
           setStatus('error');
         }
       }
