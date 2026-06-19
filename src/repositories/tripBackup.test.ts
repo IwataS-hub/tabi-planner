@@ -2,11 +2,20 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/db/database';
 import { parseBackup, type TripBackup } from '@/domain/backup';
 import { routeKey } from '@/domain/routing';
+import { participantRepository } from './participantRepository';
+import { expenseRepository } from './expenseRepository';
 import { placeRepository } from './placeRepository';
 import { tripRepository } from './tripRepository';
 
 beforeEach(async () => {
-  await Promise.all([db.trips.clear(), db.days.clear(), db.places.clear()]);
+  await Promise.all([
+    db.trips.clear(),
+    db.days.clear(),
+    db.places.clear(),
+    db.participants.clear(),
+    db.expenses.clear(),
+    db.expenseShares.clear(),
+  ]);
 });
 
 async function seedTrip() {
@@ -311,6 +320,37 @@ describe('travel estimates in backups (Phase 2.2)', () => {
     expect(newC.travelEstimateSource).toBe('manual');
   });
 
+  it('preserves manual transit travelMode after export/import roundtrip', async () => {
+    const { trip } = await seedLegTrip();
+    const days = await tripRepository.listDays(trip.id);
+    // Add a transit place with a manual time entry
+    const transit = await placeRepository.add({
+      tripId: trip.id,
+      dayId: days[0].id,
+      latitude: 35.2,
+      longitude: 135.2,
+      name: '京都駅',
+    });
+    // Set travelMinutes and transit mode directly to simulate manual transit entry
+    await db.places.update(transit.id, {
+      travelMinutes: 20,
+      travelMode: 'transit',
+      travelEstimateSource: 'manual',
+    });
+
+    const backup = await tripRepository.exportTrip(trip.id);
+    const reparsed = parseBackup(JSON.stringify(backup));
+    const imported = await tripRepository.importBackup(reparsed);
+    const importedPlaces = await placeRepository.listByTrip(imported.id);
+    const newTransit = importedPlaces.find((p) => p.name === '京都駅')!;
+
+    expect(newTransit.travelMode).toBe('transit');
+    expect(newTransit.travelEstimateSource).toBe('manual');
+    expect(newTransit.travelMinutes).toBe(20);
+    expect(newTransit.travelToPlaceId).toBeNull();
+    expect(newTransit.travelDistanceMeters).toBeNull();
+  });
+
   it('loads an old version 1 backup whose places lack the Phase 2.2 fields', async () => {
     const { trip } = await seedLegTrip();
     const backup = await tripRepository.exportTrip(trip.id);
@@ -334,5 +374,95 @@ describe('travel estimates in backups (Phase 2.2)', () => {
       expect(place.travelToPlaceId).toBeNull();
     }
     expect(places.find((place) => place.name === 'A')!.travelEstimateSource).toBe('manual');
+  });
+});
+
+describe('Phase 2.3 import – expense shares and participants', () => {
+  async function seedTripWithExpense() {
+    const trip = await tripRepository.create({
+      title: '精算テスト',
+      description: '',
+      startDate: '2026-08-01',
+      endDate: '2026-08-01',
+    });
+    const alice = await participantRepository.add({ tripId: trip.id, name: 'Alice' });
+    const bob = await participantRepository.add({ tripId: trip.id, name: 'Bob' });
+    const result = await expenseRepository.add({
+      tripId: trip.id,
+      dayId: null,
+      placeId: null,
+      title: '夕食',
+      amountYen: 4000,
+      category: 'food',
+      payerId: alice.id,
+      occurredAt: null,
+      memo: '',
+      shares: [
+        { participantId: alice.id, amountYen: 2000 },
+        { participantId: bob.id, amountYen: 2000 },
+      ],
+    });
+    return { trip, alice, bob, expense: result.expense };
+  }
+
+  it('preserves participants, expenses, and shares after roundtrip', async () => {
+    const { trip, alice } = await seedTripWithExpense();
+    const backup = await tripRepository.exportTrip(trip.id);
+    const reparsed = parseBackup(JSON.stringify(backup));
+    const imported = await tripRepository.importBackup(reparsed);
+
+    const importedBackup = await tripRepository.exportTrip(imported.id);
+    expect(importedBackup.participants).toHaveLength(2);
+    expect(importedBackup.expenses).toHaveLength(1);
+    expect(importedBackup.expenseShares).toHaveLength(2);
+    expect(importedBackup.expenses[0].amountYen).toBe(4000);
+    expect(importedBackup.expenseShares.reduce((s, sh) => s + sh.amountYen, 0)).toBe(4000);
+    // IDs must be remapped
+    expect(importedBackup.participants[0].id).not.toBe(alice.id);
+  });
+
+  it('throws when an expenseShare references an expense not in the backup', async () => {
+    const { trip } = await seedTripWithExpense();
+    const backup = await tripRepository.exportTrip(trip.id);
+
+    const orphanBackup: TripBackup = {
+      ...backup,
+      expenseShares: [
+        ...backup.expenseShares,
+        {
+          id: 'orphan-share',
+          expenseId: 'nonexistent-expense',
+          participantId: backup.participants[0]!.id,
+          amountYen: 100,
+        },
+      ],
+    };
+    await expect(tripRepository.importBackup(orphanBackup)).rejects.toThrow(
+      /費用分担が参照する費用が見つかりません/,
+    );
+    // No partial data saved
+    expect(await db.expenseShares.count()).toBe(2); // original only
+  });
+
+  it('throws when an expenseShare references a participant not in the backup', async () => {
+    const { trip } = await seedTripWithExpense();
+    const backup = await tripRepository.exportTrip(trip.id);
+
+    const orphanBackup: TripBackup = {
+      ...backup,
+      expenseShares: [
+        ...backup.expenseShares,
+        {
+          id: 'orphan-share',
+          expenseId: backup.expenses[0]!.id,
+          participantId: 'nonexistent-participant',
+          amountYen: 100,
+        },
+      ],
+    };
+    await expect(tripRepository.importBackup(orphanBackup)).rejects.toThrow(
+      /費用分担が参照する参加者が見つかりません/,
+    );
+    expect(await db.expenseShares.count()).toBe(2);
   });
 });

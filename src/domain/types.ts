@@ -23,6 +23,23 @@ export const PLACE_CATEGORIES = [
 
 export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
 
+export const VISIT_STATUSES = ['planned', 'visited', 'skipped'] as const;
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+
+export const EXPENSE_CATEGORIES = [
+  'food',
+  'transport',
+  'lodging',
+  'sightseeing',
+  'shopping',
+  'activity',
+  'other',
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const CHECKLIST_KINDS = ['packing', 'todo'] as const;
+export type ChecklistKind = (typeof CHECKLIST_KINDS)[number];
+
 /** Current schema version persisted on every Trip. Bump when records change. */
 export const CURRENT_SCHEMA_VERSION = 1;
 
@@ -40,6 +57,8 @@ export interface Trip {
   startDate: string;
   /** YYYY-MM-DD */
   endDate: string;
+  /** Optional overall budget in integer yen, or null. */
+  budgetYen: number | null;
   /** ISO timestamp */
   createdAt: string;
   /** ISO timestamp */
@@ -77,6 +96,8 @@ export interface Place {
   url: string;
   /** Estimated cost in JPY, or null. */
   estimatedCost: number | null;
+  /** Visit status, normalised from null (legacy) to 'planned'. */
+  visitStatus: VisitStatus;
   // --- Per-leg travel estimate to the NEXT spot (Phase 2.2) ----------------
   /** Travel mode of the current estimate, or null. */
   travelMode: TravelMode | null;
@@ -107,4 +128,62 @@ export interface TripBundle {
 export interface LatLng {
   latitude: number;
   longitude: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2.3: Participants, Expenses, Checklists
+// ---------------------------------------------------------------------------
+
+export interface Participant {
+  id: string;
+  tripId: string;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Expense {
+  id: string;
+  tripId: string;
+  /** Optional day this expense belongs to, or null. */
+  dayId: string | null;
+  /** Optional place this expense is associated with, or null. */
+  placeId: string | null;
+  title: string;
+  /** Integer yen amount. */
+  amountYen: number;
+  category: ExpenseCategory;
+  /** Participant id of the person who paid. */
+  payerId: string;
+  /** YYYY-MM-DD when the expense occurred, or null. */
+  occurredAt: string | null;
+  memo: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseShare {
+  id: string;
+  expenseId: string;
+  participantId: string;
+  /** Integer yen share amount. */
+  amountYen: number;
+}
+
+export interface ChecklistItem {
+  id: string;
+  tripId: string;
+  kind: ChecklistKind;
+  title: string;
+  completed: boolean;
+  /** Participant id of the assignee, or null. */
+  assigneeId: string | null;
+  /** YYYY-MM-DD due date, or null. */
+  dueAt: string | null;
+  /** Free-form category label (e.g. "衣類", "書類"). */
+  category: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
 }

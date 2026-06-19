@@ -1,18 +1,28 @@
 import { z } from 'zod';
-import { placeRecordSchema, tripDayRecordSchema, tripRecordSchema } from '@/validation/schemas';
-import type { PlaceRecord, TripDayRecord, TripRecord } from '@/db/records';
+import {
+  checklistItemRecordSchema,
+  expenseRecordSchema,
+  expenseShareRecordSchema,
+  participantRecordSchema,
+  placeRecordSchema,
+  tripDayRecordSchema,
+  tripRecordSchema,
+} from '@/validation/schemas';
+import type {
+  ChecklistItemRecord,
+  ExpenseRecord,
+  ExpenseShareRecord,
+  ParticipantRecord,
+  PlaceRecord,
+  TripDayRecord,
+  TripRecord,
+} from '@/db/records';
 import { eachDateInRange, toISODate } from '@/lib/date';
 
-/**
- * Single-trip backup format. A backup is fully self-contained (trip + its days
- * + its places) and carries a format tag and version so future readers can
- * detect and reject incompatible files. It must contain no secrets or
- * browser-specific data — only the records the user created.
- */
 export const BACKUP_FORMAT = 'tabiori-trip-backup';
 export const BACKUP_VERSION = 1;
 
-/** Maximum accepted import size (Phase 1.2: ~2MB). */
+/** Maximum accepted import size (~2MB). */
 export const MAX_BACKUP_BYTES = 2 * 1024 * 1024;
 
 export const tripBackupSchema = z.object({
@@ -24,6 +34,11 @@ export const tripBackupSchema = z.object({
   trip: tripRecordSchema,
   days: z.array(tripDayRecordSchema),
   places: z.array(placeRecordSchema),
+  // Phase 2.3: optional arrays — default to [] for v1 backups without them
+  participants: z.array(participantRecordSchema).optional().default([]),
+  expenses: z.array(expenseRecordSchema).optional().default([]),
+  expenseShares: z.array(expenseShareRecordSchema).optional().default([]),
+  checklistItems: z.array(checklistItemRecordSchema).optional().default([]),
 });
 
 export type TripBackup = z.infer<typeof tripBackupSchema>;
@@ -40,6 +55,10 @@ export function buildBackup(
   trip: TripRecord,
   days: TripDayRecord[],
   places: PlaceRecord[],
+  participants: ParticipantRecord[] = [],
+  expenses: ExpenseRecord[] = [],
+  expenseShares: ExpenseShareRecord[] = [],
+  checklistItems: ChecklistItemRecord[] = [],
 ): TripBackup {
   return {
     format: BACKUP_FORMAT,
@@ -48,15 +67,13 @@ export function buildBackup(
     trip,
     days,
     places,
+    participants,
+    expenses,
+    expenseShares,
+    checklistItems,
   };
 }
 
-/**
- * Build a safe download filename like `tabiori_京都旅行_2026-06-16.json`.
- * Removes characters that are illegal/unsafe in filenames across platforms
- * while keeping Japanese text; whitespace becomes an underscore. Falls back to
- * a generic name when nothing usable remains.
- */
 export function safeBackupFilename(title: string, exportedAtIso: string): string {
   const cleaned = title
     .replace(/[<>:"/\\|?*]/g, '')
@@ -73,12 +90,6 @@ function byteLength(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
-/**
- * Parse and validate backup text into a typed TripBackup, or throw a
- * BackupError with a Japanese reason. Pure (no DB access) so it is fully
- * unit-testable. Checks, in order: size, JSON validity, format/version,
- * full Zod schema, then referential integrity between trip/days/places.
- */
 export function parseBackup(text: string): TripBackup {
   if (byteLength(text) > MAX_BACKUP_BYTES) {
     throw new BackupError('ファイルサイズが大きすぎます（上限は約2MBです）。');
@@ -118,7 +129,7 @@ export function parseBackup(text: string): TripBackup {
   return backup;
 }
 
-/** Verify trip/day/place ids are internally consistent before importing. */
+/** Verify trip/day/place/participant/expense ids are internally consistent. */
 export function assertReferentialIntegrity(backup: TripBackup): void {
   const dayIds = new Set(backup.days.map((day) => day.id));
   if (dayIds.size !== backup.days.length) {
@@ -144,6 +155,60 @@ export function assertReferentialIntegrity(backup: TripBackup): void {
     }
     if (!dayIds.has(place.dayId)) {
       throw new BackupError('スポットが参照する日付データが見つかりません。');
+    }
+  }
+
+  // Phase 2.3 referential integrity
+  const placeIds = new Set(backup.places.map((p) => p.id));
+  const participantIds = new Set(backup.participants.map((p) => p.id));
+  const expenseIds = new Set(backup.expenses.map((e) => e.id));
+
+  for (const p of backup.participants) {
+    if (p.tripId !== backup.trip.id) {
+      throw new BackupError('参加者データが旅行と対応していません。');
+    }
+  }
+  for (const e of backup.expenses) {
+    if (e.tripId !== backup.trip.id) {
+      throw new BackupError('費用データが旅行と対応していません。');
+    }
+    if (e.dayId != null && !dayIds.has(e.dayId)) {
+      throw new BackupError('費用データが参照する日付データが見つかりません。');
+    }
+    if (e.placeId != null && !placeIds.has(e.placeId)) {
+      throw new BackupError('費用データが参照するスポットが見つかりません。');
+    }
+    if (!participantIds.has(e.payerId)) {
+      throw new BackupError('費用の支払者が参加者として見つかりません。');
+    }
+  }
+  for (const s of backup.expenseShares) {
+    if (!expenseIds.has(s.expenseId)) {
+      throw new BackupError('費用分担データが参照する費用が見つかりません。');
+    }
+    if (!participantIds.has(s.participantId)) {
+      throw new BackupError('費用分担データが参照する参加者が見つかりません。');
+    }
+  }
+  // Validate share totals
+  const shareSumByExpense = new Map<string, number>();
+  for (const s of backup.expenseShares) {
+    shareSumByExpense.set(s.expenseId, (shareSumByExpense.get(s.expenseId) ?? 0) + s.amountYen);
+  }
+  for (const e of backup.expenses) {
+    const shareTotal = shareSumByExpense.get(e.id) ?? 0;
+    if (shareTotal !== e.amountYen) {
+      throw new BackupError(
+        `費用「${e.title}」の分担合計（${shareTotal}円）が費用額（${e.amountYen}円）と一致しません。`,
+      );
+    }
+  }
+  for (const item of backup.checklistItems) {
+    if (item.tripId !== backup.trip.id) {
+      throw new BackupError('チェックリスト項目が旅行と対応していません。');
+    }
+    if (item.assigneeId != null && !participantIds.has(item.assigneeId)) {
+      throw new BackupError('チェックリスト項目が参照する参加者が見つかりません。');
     }
   }
 }

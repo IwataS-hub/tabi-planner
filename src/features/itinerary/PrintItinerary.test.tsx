@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { Place, Trip, TripDay } from '@/domain/types';
 import { PrintItinerary } from './PrintItinerary';
@@ -11,6 +11,7 @@ const trip: Trip = {
   description: '',
   startDate: '2026-07-01',
   endDate: '2026-07-01',
+  budgetYen: null,
   createdAt: ISO,
   updatedAt: ISO,
   schemaVersion: 1,
@@ -33,6 +34,7 @@ function makePlace(over: Partial<Place> & { id: string }): Place {
     memo: '',
     url: '',
     estimatedCost: null,
+    visitStatus: 'planned',
     travelMode: null,
     travelDistanceMeters: null,
     travelEstimateSource: null,
@@ -79,5 +81,19 @@ describe('PrintItinerary travel times', () => {
     ];
     render(<PrintItinerary trip={trip} days={days} places={places} />);
     expect(screen.getByText(/徒歩 18分・1.3km/)).toBeInTheDocument();
+  });
+});
+
+describe('PrintItinerary does not fetch weather', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('does not call fetch when rendering', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const places = [makePlace({ id: 'p1', name: 'スポット A', order: 0 })];
+    render(<PrintItinerary trip={trip} days={days} places={places} />);
+    // PrintItinerary must not trigger any network request
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

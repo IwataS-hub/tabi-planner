@@ -13,6 +13,12 @@ const TripFormPage = lazy(() =>
 const ItineraryPage = lazy(() =>
   import('@/features/itinerary/ItineraryPage').then((m) => ({ default: m.ItineraryPage })),
 );
+const MoneyPage = lazy(() =>
+  import('@/features/money/MoneyPage').then((m) => ({ default: m.MoneyPage })),
+);
+const ChecklistsPage = lazy(() =>
+  import('@/features/checklists/ChecklistsPage').then((m) => ({ default: m.ChecklistsPage })),
+);
 const NotFoundPage = lazy(() =>
   import('@/features/NotFoundPage').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -27,6 +33,8 @@ export function App() {
             <Route path="/trips/new" element={<TripFormPage mode="create" />} />
             <Route path="/trips/:tripId/edit" element={<TripFormPage mode="edit" />} />
             <Route path="/trips/:tripId" element={<ItineraryPage />} />
+            <Route path="/trips/:tripId/money" element={<MoneyPage />} />
+            <Route path="/trips/:tripId/checklists" element={<ChecklistsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>

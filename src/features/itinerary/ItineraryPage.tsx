@@ -12,7 +12,7 @@ import {
   type RouteEstimate,
   type TravelMode,
 } from '@/domain/routing';
-import type { LatLng, Place } from '@/domain/types';
+import type { LatLng, Place, VisitStatus } from '@/domain/types';
 import { summarizeDay } from '@/domain/summary';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSaveStatus } from '@/hooks/useSaveStatus';
@@ -25,12 +25,14 @@ import {
 import { getGeocodingService } from '@/services/geocoding/geocodingService';
 import { getRoutingService } from '@/services/routing/routingService';
 import { ItineraryHeader } from './ItineraryHeader';
+import { TripNav } from './TripNav';
 import { DayTabs } from './DayTabs';
 import { DaySummaryBar } from './DaySummaryBar';
 import { PlaceList } from './PlaceList';
 import { PlaceSearch } from './PlaceSearch';
 import { MapPanel } from './MapPanel';
 import { PrintItinerary } from './PrintItinerary';
+import { WeatherWidget } from './WeatherWidget';
 
 export function ItineraryPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -245,6 +247,10 @@ export function ItineraryPage() {
     void track(() => placeRepository.reorderWithinDay(selectedDayId, orderedIds));
   };
 
+  const handleVisitStatusChange = (id: string, status: VisitStatus) => {
+    void track(() => placeRepository.update(id, { visitStatus: status }));
+  };
+
   const handleFocusOnMap = (id: string) => selectPlace(id);
 
   /**
@@ -331,6 +337,13 @@ export function ItineraryPage() {
 
   const listColumn = (
     <div className="space-y-3">
+      <WeatherWidget
+        days={dayList}
+        places={placeList}
+        selectedDayId={selectedDayId}
+        tripStartDate={trip.data.startDate}
+        tripEndDate={trip.data.endDate}
+      />
       <PlaceSearch
         service={geocodingService}
         getBias={getBias}
@@ -352,6 +365,7 @@ export function ItineraryPage() {
         onLegResult={handleLegResult}
         onLegCalculationStart={handleLegCalculationStart}
         onTransitSelected={handleTransitSelected}
+        onVisitStatusChange={handleVisitStatusChange}
       />
     </div>
   );
@@ -376,6 +390,7 @@ export function ItineraryPage() {
     <>
       <div className="flex h-dvh flex-col overflow-hidden print:hidden">
         <ItineraryHeader trip={trip.data} />
+        <TripNav tripId={trip.data.id} />
 
         <div className="border-border bg-paper shrink-0 space-y-2 border-b px-3 py-2 sm:px-4">
           <DayTabs

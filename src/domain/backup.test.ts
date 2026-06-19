@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { PlaceRecord, TripDayRecord, TripRecord } from '@/db/records';
+import type {
+  ChecklistItemRecord,
+  ExpenseRecord,
+  ExpenseShareRecord,
+  ParticipantRecord,
+  PlaceRecord,
+  TripDayRecord,
+  TripRecord,
+} from '@/db/records';
 import {
   BackupError,
   MAX_BACKUP_BYTES,
@@ -16,6 +24,7 @@ const trip: TripRecord = {
   description: '紅葉めぐり',
   startDate: '2026-07-01',
   endDate: '2026-07-02',
+  budgetYen: null,
   createdAt: ISO,
   updatedAt: ISO,
   schemaVersion: 1,
@@ -48,6 +57,7 @@ const places: PlaceRecord[] = [
     memo: '',
     url: 'https://example.com',
     estimatedCost: 400,
+    visitStatus: null,
     order: 0,
     createdAt: ISO,
     updatedAt: ISO,
@@ -123,6 +133,107 @@ describe('parseBackup', () => {
     const backup = buildBackup(trip, days, [{ ...places[0], address: '   ' }]);
     const parsed = parseBackup(JSON.stringify(backup));
     expect(parsed.places[0].address).toBeNull();
+  });
+});
+
+describe('Phase 2.3 new entities in backup', () => {
+  const ISO = '2026-06-16T00:00:00.000Z';
+
+  const participant: ParticipantRecord = {
+    id: 'part1',
+    tripId: 't1',
+    name: 'Alice',
+    order: 0,
+    createdAt: ISO,
+    updatedAt: ISO,
+  };
+
+  const expense: ExpenseRecord = {
+    id: 'exp1',
+    tripId: 't1',
+    dayId: null,
+    placeId: null,
+    payerId: 'part1',
+    title: 'Dinner',
+    amountYen: 3000,
+    category: 'food',
+    occurredAt: null,
+    memo: '',
+    createdAt: ISO,
+    updatedAt: ISO,
+  };
+
+  const expenseShare: ExpenseShareRecord = {
+    id: 'share1',
+    expenseId: 'exp1',
+    participantId: 'part1',
+    amountYen: 3000,
+  };
+
+  const checklistItem: ChecklistItemRecord = {
+    id: 'ci1',
+    tripId: 't1',
+    kind: 'packing',
+    title: '折りたたみ傘',
+    category: '天気対策',
+    completed: false,
+    assigneeId: null,
+    dueAt: null,
+    order: 0,
+    createdAt: ISO,
+    updatedAt: ISO,
+  };
+
+  it('round-trips participants, expenses, shares, and checklist items', () => {
+    const backup = buildBackup(
+      trip,
+      days,
+      places,
+      [participant],
+      [expense],
+      [expenseShare],
+      [checklistItem],
+    );
+    const parsed = parseBackup(JSON.stringify(backup));
+    expect(parsed.participants).toHaveLength(1);
+    expect(parsed.participants[0].name).toBe('Alice');
+    expect(parsed.expenses).toHaveLength(1);
+    expect(parsed.expenses[0].title).toBe('Dinner');
+    expect(parsed.expenseShares).toHaveLength(1);
+    expect(parsed.expenseShares[0].amountYen).toBe(3000);
+    expect(parsed.checklistItems).toHaveLength(1);
+    expect(parsed.checklistItems[0].title).toBe('折りたたみ傘');
+  });
+
+  it('defaults new entity arrays to [] when absent (legacy v1 backward compat)', () => {
+    const legacy = buildBackup(trip, days, places) as unknown as Record<string, unknown>;
+    delete legacy.participants;
+    delete legacy.expenses;
+    delete legacy.expenseShares;
+    delete legacy.checklistItems;
+    const parsed = parseBackup(JSON.stringify(legacy));
+    expect(parsed.participants).toHaveLength(0);
+    expect(parsed.expenses).toHaveLength(0);
+    expect(parsed.expenseShares).toHaveLength(0);
+    expect(parsed.checklistItems).toHaveLength(0);
+  });
+
+  it('rejects an expense whose payerId does not match any participant', () => {
+    const badExpense: ExpenseRecord = { ...expense, payerId: 'ghost' };
+    const backup = buildBackup(trip, days, places, [participant], [badExpense], [expenseShare], []);
+    expect(() => parseBackup(JSON.stringify(backup))).toThrow(BackupError);
+  });
+
+  it('rejects a share whose expenseId does not exist', () => {
+    const badShare = { ...expenseShare, expenseId: 'ghost' };
+    const backup = buildBackup(trip, days, places, [participant], [expense], [badShare], []);
+    expect(() => parseBackup(JSON.stringify(backup))).toThrow(BackupError);
+  });
+
+  it('rejects a share whose participantId does not exist', () => {
+    const badShare = { ...expenseShare, participantId: 'ghost' };
+    const backup = buildBackup(trip, days, places, [participant], [expense], [badShare], []);
+    expect(() => parseBackup(JSON.stringify(backup))).toThrow(BackupError);
   });
 });
 

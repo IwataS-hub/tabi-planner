@@ -14,7 +14,7 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CategoryIcon } from '@/components/CategoryIcon';
 import { CATEGORY_LIST } from '@/domain/categories';
-import type { Place, PlaceCategory } from '@/domain/types';
+import type { Place, PlaceCategory, VisitStatus } from '@/domain/types';
 import { DEFAULT_PLACE_NAME, type PlacePatch } from '@/repositories/placeRepository';
 import { isHttpUrl } from '@/lib/utils';
 
@@ -247,6 +247,23 @@ export function PlaceEditor({
                   </span>
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${fieldId}-visit-status`}>訪問状態</Label>
+          <Select
+            value={place.visitStatus}
+            onValueChange={(value) => onSave(place.id, { visitStatus: value as VisitStatus })}
+          >
+            <SelectTrigger id={`${fieldId}-visit-status`} aria-label="訪問状態">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="planned">未訪問（予定）</SelectItem>
+              <SelectItem value="visited">訪問済み</SelectItem>
+              <SelectItem value="skipped">スキップ</SelectItem>
             </SelectContent>
           </Select>
         </div>

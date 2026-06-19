@@ -98,6 +98,7 @@ export type PlacePatch = Partial<
     | 'estimatedCost'
     | 'latitude'
     | 'longitude'
+    | 'visitStatus'
   >
 >;
 
@@ -158,6 +159,7 @@ export const placeRepository = {
           memo: '',
           url: '',
           estimatedCost: null,
+          visitStatus: null,
           order,
           createdAt: now,
           updatedAt: now,
